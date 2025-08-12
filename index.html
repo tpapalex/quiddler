@@ -883,7 +883,7 @@
 
             const challengerDropdown = document.createElement('select');
             challengerDropdown.className = 'ml-2 p-1 border rounded challenger-dropdown';
-            challengerDropdown.innerHTML = `<option value="">Select Challenger</option><option value="null"><i>No Challenge</i></option>` +
+            challengerDropdown.innerHTML = `<option value="">Select Challenger</option><option value="null">GOD</option>` +
                 players.filter(p => p !== player).map(p => `<option>${p}</option>`).join('');
 
             challengerDropdown.onchange = function() {
@@ -1558,7 +1558,7 @@
             showDict: async (word) => {
               openDrawer();
               showTab('dict');
-              dictInput.value = word || '';
+              dictInput.value = (word || '').replace(/[()]/g, '');
               await renderDefinition(dictInput.value);
             },
             showPlay: () => {
