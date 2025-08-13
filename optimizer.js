@@ -1,5 +1,3 @@
-'use strict';
-
 // ---------- Build trie ----------
 function buildTrie(words, maxDepth = 10) {
   const root = { children: Object.create(null), end: false };

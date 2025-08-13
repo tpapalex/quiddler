@@ -1,4 +1,13 @@
 <!DOCTYPE html>
+<!--
+  Quiddler Scoring App
+  - UI: Tailwind-based form for players, rounds, and a tools drawer (Dictionary + Solver)
+  - Scripts load order:
+      1) Data: collins_dictionary.js, card_scores.js, common_lemmas.js
+      2) ESM: wink-lemmatizer (needed by Solver common-word filter)
+      3) App: dictionary_api.js, scoring.js, render.js, optimizer.js, game.js, tools_drawer.js
+  - Entry points used by the page: startGame(), nextRound(), initToolsDrawer()
+-->
 <html lang="en">
 <head>
     <meta charset="UTF-8">

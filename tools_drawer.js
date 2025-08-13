@@ -1,5 +1,3 @@
-'use strict';
-
 function initToolsDrawer(){
   const drawer   = document.getElementById('toolsDrawer');
   const closeBtn = document.getElementById('toolsCloseBtn');

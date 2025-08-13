@@ -1,5 +1,3 @@
-'use strict';
-
 // HTML for a single chit (reusable for rounds or optimizer)
 function renderChit(word, opts = {}) {
   const {

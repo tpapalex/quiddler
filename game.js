@@ -1,5 +1,11 @@
 'use strict';
 
+/*
+  Game flow and scoring logic for Quiddler.
+  - Manages players, rounds, per-round word entries, challenges, and running totals.
+  - Exposes startGame, nextRound, and UI helpers used by index.html buttons.
+*/
+
 let gameStarted = false;
 let players = [];
 let scores = {};
@@ -12,6 +18,9 @@ let longestWordPoints = 0;
 let mostWordsPoints = 0;
 let currentDealerIdx = 0;
 
+/**
+ * Initialize a new game from the UI controls and render round 1.
+ */
 function startGame() {
   // Parse and clean players list
   players = document.getElementById('playersInput').value
@@ -58,6 +67,9 @@ function startGame() {
   setupRound();
 }
 
+/**
+ * Populate the score input fields for the current round and advance dealer.
+ */
 function setupRound() {
   const dealer = players[currentDealerIdx % players.length];
   document.getElementById('roundHeader').innerText = `Round ${currentRound} Cards (${dealer} deals)`;
@@ -74,11 +86,17 @@ function setupRound() {
   currentDealerIdx++;
 }
 
+/**
+ * True if a bare word (parentheses removed) exists in the word list.
+ */
 function validateWord(word) {
   const cleanedWord = word.replace(/[()]/g, '').toUpperCase();
   return validWordsMap.hasOwnProperty(cleanedWord);
 }
 
+/**
+ * Read all players' inputs for the round, store, recalc totals, and advance.
+ */
 function nextRound() {
   const round = { roundNum: currentRound, players: {} };
 
@@ -102,29 +120,37 @@ function nextRound() {
 }
 
 // ---------- Helpers ----------
+// A word counts toward base if it's not invalid OR it's invalid with no challenger (definition-only / unchallenged).
 function eligibleForBase(word) {
   return (word.state !== 'invalid') || (word.state === 'invalid' && word.challenger == null);
 }
+// A word counts toward bonuses if it is NOT a '-' chit and passes base eligibility.
 function eligibleForBonus(word) {
   return !word.text.startsWith('-') && eligibleForBase(word);
 }
+// Signed value for a single word (handles '-' penalty).
 function wordBaseValue(word) {
   const sign = word.text.startsWith('-') ? -1 : 1;
   return sign * word.score;
 }
+// Base points for a player's row.
 function baseScoreForPlayer(pdata) {
   return pdata.reduce((sum, w) => sum + (eligibleForBase(w) ? wordBaseValue(w) : 0), 0);
 }
+// Words eligible for bonuses.
 function bonusEligibleWords(pdata) {
   return pdata.filter(eligibleForBonus);
 }
+// Longest word length (letters only).
 function longestWordLen(pdata) {
   return bonusEligibleWords(pdata)
     .reduce((max, w) => Math.max(max, w.text.replace(/[()]/g, '').length), 0);
 }
+// Count of bonus-eligible words.
 function wordsCount(pdata) {
   return bonusEligibleWords(pdata).length;
 }
+// Reset per-round bookkeeping fields on a player's row data.
 function resetRoundPlayerState(pdata) {
   pdata.roundScore = 0;
   pdata.challengeDeductions = 0;
@@ -132,6 +158,7 @@ function resetRoundPlayerState(pdata) {
   pdata.gotLongestBonus = false;
   pdata.gotMostWordsBonus = false;
 }
+// Apply challenge deductions per the rules (see README for details).
 function applyChallengeDeductionsForPlayer(round, player) {
   const pdata = round.players[player];
   pdata.forEach(word => {
@@ -144,6 +171,9 @@ function applyChallengeDeductionsForPlayer(round, player) {
 }
 
 // ---------- Main ----------
+/**
+ * Recompute every player's score across all rounds, including bonuses and challenges.
+ */
 function recalculateScores() {
   players.forEach(player => { scores[player] = 0; });
 
@@ -199,7 +229,9 @@ function recalculateScores() {
   updateScores();
 }
 
-// Handler for the gear button
+/**
+ * Open the Play Helper prefilled from a player's current round row.
+ */
 function prefillPlayFor(roundIdx, playerName, e) {
   e?.stopPropagation?.();
   const round = roundsData[roundIdx];
@@ -224,6 +256,9 @@ function prefillPlayFor(roundIdx, playerName, e) {
   });
 }
 
+/**
+ * Switch a player's row to edit mode (inline editing of chits as text).
+ */
 function enterEditMode(player, roundIdx, btn) {
   const row = btn.closest('.group');
   const cell = row.querySelector('.flex-1.min-w-0');
@@ -260,6 +295,9 @@ function cancelEdit(btn) {
   cell.querySelector('.chit-container')?.classList.remove('hidden');
 }
 
+/**
+ * Save edits to a player's row, then re-render and recalc totals.
+ */
 function saveEdit(player, roundIdx, btn) {
   const row = btn.closest('.group');
   const cell = row.querySelector('.flex-1.min-w-0');
@@ -279,6 +317,9 @@ function saveEdit(player, roundIdx, btn) {
   updatePreviousRounds();
 }
 
+/**
+ * Update the leaderboard list from the current totals.
+ */
 function updateScores() {
   document.getElementById('scoreTotals').innerHTML = players
     .map(player => ({ player, score: scores[player] }))
@@ -287,6 +328,9 @@ function updateScores() {
     .join('');
 }
 
+/**
+ * Toggle a word's challenge state and assign a challenger via a dropdown.
+ */
 function toggleChallenge(btn, e) {
   e.stopPropagation();
 
@@ -359,12 +403,15 @@ function updateBonusInputs() {
   document.getElementById('mostWordsPoints').disabled = !document.getElementById('mostWordsBonus').checked;
 }
 
-// Initialize input states correctly
+// Initialize bonus inputs to match toggles
 updateBonusInputs();
 
 document.getElementById('longestWordBonus')?.addEventListener('change', updateBonusInputs);
 document.getElementById('mostWordsBonus')?.addEventListener('change', updateBonusInputs);
 
+/**
+ * Render the previous rounds list and wire tooltip/dictionary handlers.
+ */
 function updatePreviousRounds() {
   const html = roundsData
     .slice()

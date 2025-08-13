@@ -1,5 +1,13 @@
 'use strict';
 
+/*
+  scoring.js
+  Core scoring helpers used across the app:
+  - parseCards: split a text word into card tokens, handling digraphs like (qu)
+  - calculateScore: sum points for a list of tokens using card_scores.js
+  - toCardToken / pointsArrayFor / breakdownStr: UI helpers for rendering
+*/
+
 // Parse input into card tokens, recognizing digraphs wrapped in parentheses
 function parseCards(word) {
   return word.match(/\([a-z]+\)|[a-z]/gi) || [];
