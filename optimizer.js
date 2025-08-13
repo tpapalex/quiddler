@@ -14,6 +14,18 @@ function buildTrie(words, maxDepth = 10) {
   return root;
 }
 
+// Global, lazily-initialized trie built from validWordsMap
+let validWordTrie = (typeof window !== 'undefined' && window.validWordTrie) ? window.validWordTrie : null;
+function getValidWordTrie() {
+  if (!validWordTrie) {
+    const words = (typeof validWordsMap !== 'undefined') ? Object.keys(validWordsMap) : [];
+    const depth = (typeof maxRound === 'number') ? maxRound : 10;
+    validWordTrie = buildTrie(words, depth);
+    if (typeof window !== 'undefined') window.validWordTrie = validWordTrie;
+  }
+  return validWordTrie;
+}
+
 // ---------- Count rack ----------
 function countRack(tiles, digraphSet) {
   const singleCounts = Object.create(null);
@@ -329,7 +341,8 @@ function optimize(params) {
     ? makeCommonGateFromEntries(wf, { mode: 'zipf', override2and3, minZipF }, lemmatizer)
     : null;
 
-  const trie = buildTrie(Object.keys(validWordsMap), maxRound);
+  // Use the global, lazily-initialized trie instead of rebuilding each time
+  const trie = getValidWordTrie();
   const candidates = generateWordCandidates(trie, rackCounts, 2, { commonGate });
 
   const bestplay = chooseBestPlay(candidates, rackCounts, {
@@ -347,6 +360,8 @@ if (typeof window !== 'undefined') {
   // Namespace for clarity
   window.QuiddlerSolver = Object.assign({}, window.QuiddlerSolver || {}, {
     buildTrie,
+    // expose the trie and accessor for convenience
+    validWordTrie: () => getValidWordTrie(),
     countRack,
     makeCommonGateFromEntries,
     generateWordCandidates,
