@@ -133,14 +133,12 @@ function generateWordCandidates(trie, rackCounts, minLen = 2, opts = {}) {
     const usage = usageFromTokens(usedTokens);
     const key = usageKey(usage);
 
-    const displayWord = (typeof joinTokensForDisplay === 'function')
-      ? joinTokensForDisplay(usedTokens)
-      : usedTokens.map(t => t.length > 1 ? `(${t})` : t).join('');
+    const displayWord = joinTokensForDisplay(usedTokens);
 
     let bucket = perWord.get(plainWord);
     if (!bucket) { bucket = new Map(); perWord.set(plainWord, bucket); }
     if (!bucket.has(key)) {
-      const score = (typeof calculateScore === 'function') ? calculateScore(usedTokens) : usedTokens.reduce((s, t) => s + (cardScores[t] || 0), 0);
+      const score = calculateScore(usedTokens);
       bucket.set(key, { word: displayWord, score, usage, length: plainWord.length });
     }
   }
@@ -366,14 +364,13 @@ function optimize(params) {
     currentMost = 0,
   } = params || {};
 
-  const rack = parseCards(String(tiles)).map(t => (typeof normalizeToken === 'function' ? normalizeToken(t) : t.replace(/[()]/g, '').toLowerCase()));
+  const rack = parseCards(String(tiles)).map(normalizeToken);
   const rackCounts = countRack(rack, DIGRAPHS);
 
   const lemmatizer = (typeof window !== 'undefined') ? window.winkLemmatizer : undefined;
 
   // Resolve frequency list from global if available
-  const wf = (typeof wordFreq !== 'undefined') ? wordFreq
-            : (typeof window !== 'undefined' && Array.isArray(window.wordFreq) ? window.wordFreq : undefined);
+  const wf = (typeof window !== 'undefined') ? window.wordFreq : undefined;
 
   const commonGate = (commonOnly && Array.isArray(wf) && wf.length)
     ? makeCommonGateFromEntries(wf, { mode: 'zipf', override2and3, minZipF }, lemmatizer)
@@ -387,8 +384,8 @@ function optimize(params) {
     noDiscard,
     currentLongest: currentLongest === 0 ? Infinity : currentLongest,
     currentMost:    currentMost    === 0 ? Infinity : currentMost,
-    longestBonus: typeof longestWordPoints === 'number' ? longestWordPoints : 0,
-    mostBonus:    typeof mostWordsPoints  === 'number' ? mostWordsPoints  : 0,
+    longestBonus: longestWordPoints,
+    mostBonus:    mostWordsPoints,
   });
 
   return bestplay;

@@ -29,7 +29,7 @@ function renderChit(word, opts = {}) {
 
   const effectiveState = forceState ?? word.state;
   const tooltipAttr = showBreakdown
-    ? `data-tippy-content="${(window.QuiddlerUI?.breakdownStr?.(word.text) || breakdownStr(word.text)).replace(/"/g, '&quot;')}"`
+    ? `data-tippy-content="${breakdownStr(word.text).replace(/"/g, '&quot;')}"`
     : '';
 
   const colorClass =
@@ -162,6 +162,9 @@ function renderRound(round, roundIdx, {interactive = true} = {}) {
 window.__defOpenHover = false;
 
 function initChitTooltips(container = document) {
+  if (typeof window === 'undefined' || !window.tippy) {
+    return { breakdownInstances: [], defInstances: [] };
+  }
   // Two tippy groups:
   // - breakdownInstances on .breakdown-tip show letter-by-letter points
   // - defInstances on .def-open indicate dictionary action; they suppress breakdown tooltips while active
@@ -211,9 +214,9 @@ function renderOptimizedPlayFromResult(containerId, result) {
 
   let unusedChitHTML = '';
   if (Array.isArray(result.unusedTiles) && result.unusedTiles.length) {
-    const toTok = (window.QuiddlerUI?.toCardToken || toCardToken);
-    const parse = (window.QuiddlerUI?.parseCards || parseCards);
-    const calc  = (window.QuiddlerUI?.calculateScore || calculateScore);
+    const toTok = toCardToken;
+    const parse = parseCards;
+    const calc  = calculateScore;
 
     const combined = '-' + result.unusedTiles.map(toTok).join('');
     const unusedScore = calc(parse(combined.replace('-', '')));
@@ -225,9 +228,9 @@ function renderOptimizedPlayFromResult(containerId, result) {
 
   let discardChitHTML = '';
   if (result.discardTile) {
-    const toTok = (window.QuiddlerUI?.toCardToken || toCardToken);
-    const parse = (window.QuiddlerUI?.parseCards || parseCards);
-    const calc  = (window.QuiddlerUI?.calculateScore || calculateScore);
+    const toTok = toCardToken;
+    const parse = parseCards;
+    const calc  = calculateScore;
 
     const discardText = '-' + toTok(result.discardTile);
     const discardScore = calc(parse(discardText.replace('-', '')));

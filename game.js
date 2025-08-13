@@ -119,7 +119,7 @@ function setupRound() {
  * True if a bare word (parentheses removed) exists in the word list.
  */
 function validateWord(word) {
-  const cleanedWord = (window.QuiddlerUI?.plainWord || (w => String(w || '').replace(/[()]/g, '').replace(/^-/, '').toLowerCase()))(word).toUpperCase();
+  const cleanedWord = plainWord(word).toUpperCase();
   return validWordsMap.hasOwnProperty(cleanedWord);
 }
 
@@ -134,7 +134,7 @@ function nextRound() {
     const words = input.value.trim().split(/\s+/).filter(w => w);
     round.players[player] = words.map(word => ({
       text: word,
-      score: (window.QuiddlerUI?.calculateScore || calculateScore)((window.QuiddlerUI?.parseCards || parseCards)(word.replace('-', ''))),
+      score: calculateScore(parseCards(word.replace('-', ''))),
       state: word.startsWith('-') ? 'invalid' : 'neutral',
       challenger: null
     }));
@@ -173,7 +173,7 @@ function bonusEligibleWords(pdata) {
 // Longest word length (letters only).
 function longestWordLen(pdata) {
   return bonusEligibleWords(pdata)
-    .reduce((max, w) => Math.max(max, (window.QuiddlerUI?.plainLength || (t => String(t || '').replace(/[()]/g, '').replace(/^-/, '').length))(w.text)), 0);
+    .reduce((max, w) => Math.max(max, plainLength(w.text)), 0);
 }
 // Count of bonus-eligible words.
 function wordsCount(pdata) {
@@ -337,7 +337,7 @@ function saveEdit(player, roundIdx, btn) {
 
   roundsData[roundIdx].players[player] = newWords.map(word => ({
     text: word,
-    score: (window.QuiddlerUI?.calculateScore || calculateScore)((window.QuiddlerUI?.parseCards || parseCards)(word.replace('-', ''))),
+    score: calculateScore(parseCards(word.replace('-', ''))),
     state: word.startsWith('-') ? 'invalid' : 'neutral',
     challenger: null
   }));

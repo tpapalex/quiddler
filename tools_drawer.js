@@ -74,10 +74,11 @@ function initToolsDrawer(){
     const onlineWrap = document.getElementById('dictOnlineWrap');
     const onlineEl   = document.getElementById('dictOnline');
     const loadingEl  = document.getElementById('dictOnlineLoading');
-    const w = (word || '').trim();
+    const raw = (word || '').trim();
+    const cleaned = plainWord(raw);
 
     // No input → hide everything
-    if (!w) {
+    if (!cleaned) {
       localWrap?.classList.add('hidden');
       onlineWrap?.classList.add('hidden');
       loadingEl?.classList.add('hidden');
@@ -85,7 +86,7 @@ function initToolsDrawer(){
     }
 
     // Local: always show a section; fallback text if missing
-    const local = getWordDefinitionLocal(w);
+    const local = getWordDefinitionLocal(cleaned);
     if (localWrap && localEl) {
       localEl.innerHTML = local ?? '<span class="text-gray-500">No definition found</span>';
       localWrap.classList.remove('hidden');
@@ -96,7 +97,7 @@ function initToolsDrawer(){
     loadingEl?.classList.remove('hidden');
 
     // Fetch online
-    const online = await getWordDefinitionAPI(w);
+    const online = await getWordDefinitionAPI(cleaned);
 
     // Update online section
     loadingEl?.classList.add('hidden');
@@ -167,9 +168,7 @@ function initToolsDrawer(){
       playStatus.textContent = '';
 
       if (result && Array.isArray(result.words) && result.words.length > 0) {
-        window.QuiddlerRender?.renderOptimizedPlayFromResult
-          ? window.QuiddlerRender.renderOptimizedPlayFromResult('playResult', result)
-          : renderOptimizedPlayFromResult('playResult', result);
+        window.QuiddlerRender.renderOptimizedPlayFromResult('playResult', result);
       } else {
         playResult.innerHTML = '<div class="text-sm text-gray-500">No playable words found.</div>';
       }
@@ -188,7 +187,7 @@ function initToolsDrawer(){
     showDict: async (word) => {
       openDrawer();
       showTab('dict');
-      dictInput.value = (word || '').replace(/[()]/g, '');
+      dictInput.value = plainWord(word);
       await renderDefinition(dictInput.value);
     },
     showPlay: () => {
