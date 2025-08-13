@@ -105,7 +105,7 @@ function nextRound() {
     const words = input.value.trim().split(/\s+/).filter(w => w);
     round.players[player] = words.map(word => ({
       text: word,
-      score: calculateScore(parseCards(word.replace('-', ''))),
+      score: (window.QuiddlerUI?.calculateScore || calculateScore)((window.QuiddlerUI?.parseCards || parseCards)(word.replace('-', ''))),
       state: word.startsWith('-') ? 'invalid' : 'neutral',
       challenger: null
     }));
@@ -308,7 +308,7 @@ function saveEdit(player, roundIdx, btn) {
 
   roundsData[roundIdx].players[player] = newWords.map(word => ({
     text: word,
-    score: calculateScore(parseCards(word.replace('-', ''))),
+    score: (window.QuiddlerUI?.calculateScore || calculateScore)((window.QuiddlerUI?.parseCards || parseCards)(word.replace('-', ''))),
     state: word.startsWith('-') ? 'invalid' : 'neutral',
     challenger: null
   }));
@@ -418,12 +418,52 @@ function updatePreviousRounds() {
     .reverse()
     .map((round, revIdx) => {
       const roundIdx = roundsData.length - 1 - revIdx;
-      return renderRound(round, roundIdx, { interactive: true });
+      return (window.QuiddlerRender?.renderRound || renderRound)(round, roundIdx, { interactive: true });
     })
     .join('');
 
   const container = document.getElementById('previousRounds');
   container.innerHTML = html;
+
+  // Delegated click handling for interactive controls
+  container.addEventListener('click', function onClick(e) {
+    const target = e.target.closest('[data-action]');
+    if (!target || !container.contains(target)) return;
+
+    const action = target.getAttribute('data-action');
+    if (!action) return;
+
+    if (action === 'toggle-challenge') {
+      toggleChallenge(target, e);
+      return;
+    }
+
+    if (action === 'edit') {
+      const player = target.getAttribute('data-player');
+      const roundIdx = +target.getAttribute('data-round');
+      enterEditMode(player, roundIdx, target);
+      return;
+    }
+
+    if (action === 'save-edit') {
+      const player = target.getAttribute('data-player');
+      const roundIdx = +target.getAttribute('data-round');
+      saveEdit(player, roundIdx, target);
+      return;
+    }
+
+    if (action === 'cancel-edit') {
+      cancelEdit(target);
+      return;
+    }
+
+    if (action === 'prefill-play') {
+      const player = target.getAttribute('data-player');
+      const roundIdx = +target.getAttribute('data-round');
+      prefillPlayFor(roundIdx, player, e);
+      return;
+    }
+  });
 
   container.querySelectorAll('.def-open').forEach(el => {
     el.addEventListener('click', async (e) => {
@@ -434,5 +474,41 @@ function updatePreviousRounds() {
     });
   });
 
-  initChitTooltips(container);
+  (window.QuiddlerRender?.initChitTooltips || initChitTooltips)(container);
+}
+
+// Expose selected game APIs under a namespace (keep globals intact for existing calls)
+if (typeof window !== 'undefined') {
+  const ns = Object.assign({}, window.QuiddlerGame || {}, {
+    startGame,
+    setupRound,
+    validateWord,
+    nextRound,
+    recalculateScores,
+    prefillPlayFor,
+    enterEditMode,
+    cancelEdit,
+    saveEdit,
+    updateScores,
+    toggleChallenge,
+    updatePreviousRounds,
+  });
+
+  // Read-only getters for state
+  Object.defineProperties(ns, {
+    players: {
+      get() { return players.slice(); }
+    },
+    currentRound: {
+      get() { return currentRound; }
+    },
+    roundsData: {
+      get() { try { return JSON.parse(JSON.stringify(roundsData)); } catch { return []; } }
+    },
+    scores: {
+      get() { return Object.assign({}, scores); }
+    },
+  });
+
+  window.QuiddlerGame = ns;
 }

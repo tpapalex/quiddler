@@ -148,12 +148,14 @@ function initToolsDrawer(){
     playResult.innerHTML = '';
 
     try {
-      const result = await optimize({ tiles, noDiscard, commonOnly, override2and3, minZipF, currentLongest, currentMost });
+      const result = await window.QuiddlerSolver.optimize({ tiles, noDiscard, commonOnly, override2and3, minZipF, currentLongest, currentMost });
 
       playStatus.textContent = '';
 
       if (result && Array.isArray(result.words) && result.words.length > 0) {
-        renderOptimizedPlayFromResult('playResult', result);
+        window.QuiddlerRender?.renderOptimizedPlayFromResult
+          ? window.QuiddlerRender.renderOptimizedPlayFromResult('playResult', result)
+          : renderOptimizedPlayFromResult('playResult', result);
       } else {
         playResult.innerHTML = '<div class="text-sm text-gray-500">No playable words found.</div>';
       }
@@ -164,32 +166,9 @@ function initToolsDrawer(){
     }
   }
 
-  async function optimize({ tiles, noDiscard, commonOnly, override2and3, minZipF, currentLongest, currentMost }) {
-    const rack = parseCards(tiles).map(w => w.replace(/[()]/g, '').toLowerCase());
-    const rackCounts = countRack(rack, DIGRAPHS);
-
-    const lemmatizer = window.winkLemmatizer;
-    const commonGate = commonOnly
-      ? makeCommonGateFromEntries(wordFreq, { mode: 'zipf', override2and3, minZipF }, lemmatizer)
-      : null;
-
-    const trie = buildTrie(Object.keys(validWordsMap), maxRound);
-
-    const candidates = generateWordCandidates(trie, rackCounts, 2, { commonGate });
-
-    const bestplay = chooseBestPlay(candidates, rackCounts, {
-      noDiscard,
-      currentLongest: currentLongest === 0 ? Infinity : currentLongest,
-      currentMost:    currentMost    === 0 ? Infinity : currentMost,
-      longestBonus: longestWordPoints,
-      mostBonus:    mostWordsPoints,
-    });
-
-    return bestplay;
-  }
-
   // Expose a tiny public API for use elsewhere
   window.QuiddlerTools = {
+    init: initToolsDrawer,
     open: openDrawer,
     close: closeDrawer,
     showDict: async (word) => {

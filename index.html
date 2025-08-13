@@ -42,7 +42,7 @@
                     <span>points</span>
                 </div>
             </div>
-            <button id="gameGo" onclick="startGame()" class="mt-3 bg-blue-500 text-white py-2 px-4 rounded">Start Game</button>
+            <button id="gameGo" class="mt-3 bg-blue-500 text-white py-2 px-4 rounded">Start Game</button>
         </div>
 
         <div id="gameArea" class="hidden">
@@ -50,7 +50,7 @@
 
             <div id="scoreInputs"></div>
 
-            <button onclick="nextRound()" class="mt-3 bg-blue-500 text-white py-2 px-4 rounded">Submit Round</button>
+            <button id="submitRoundBtn" class="mt-3 bg-blue-500 text-white py-2 px-4 rounded">Submit Round</button>
 
             <h3 class="font-semibold text-xl mt-6">Running Totals</h3>
             <ul id="scoreTotals" class="list-disc pl-6"></ul>
@@ -224,7 +224,15 @@
     <!-- Bootstrap -->
     <script>
       // Initialize the tools drawer and button tooltips
-      initToolsDrawer();
+      window.QuiddlerTools?.init ? window.QuiddlerTools.init() : initToolsDrawer();
+
+      // Wire buttons to namespaced APIs (fallback to globals during migration)
+      document.getElementById('gameGo')?.addEventListener('click', () => {
+        (window.QuiddlerGame?.startGame || window.startGame)?.();
+      });
+      document.getElementById('submitRoundBtn')?.addEventListener('click', () => {
+        (window.QuiddlerGame?.nextRound || window.nextRound)?.();
+      });
     </script>
 </body>
 </html>

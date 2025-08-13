@@ -14,7 +14,7 @@ function renderChit(word, opts = {}) {
 
   const effectiveState = forceState ?? word.state;
   const tooltipAttr = showBreakdown
-    ? `data-tippy-content="${breakdownStr(word.text).replace(/"/g, '&quot;')}"`
+    ? `data-tippy-content="${(window.QuiddlerUI?.breakdownStr?.(word.text) || breakdownStr(word.text)).replace(/"/g, '&quot;')}"`
     : '';
 
   const colorClass =
@@ -37,8 +37,7 @@ function renderChit(word, opts = {}) {
 
   // interactive wiring (only when interactive=true)
   const interAttrs = interactive
-    ? `data-player="${player}" data-round="${roundIdx}" data-word="${wordIdx}"
-       onclick="toggleChallenge(this,event)"`
+    ? `data-action="toggle-challenge" data-player="${player}" data-round="${roundIdx}" data-word="${wordIdx}"`
     : `aria-disabled="true"`;
 
   const cursorClass = interactive ? 'cursor-pointer hover:bg-opacity-80' : 'cursor-default';
@@ -78,9 +77,9 @@ function renderPlayerRowHeader(player, pdata) {
 function renderRowControls(roundIdx, player) {
   return `
     <span class="w-10 shrink-0 flex items-center gap-1 justify-start">
-      <button onclick="enterEditMode('${player}', ${roundIdx}, this)"
+      <button data-action="edit" data-player="${player}" data-round="${roundIdx}"
               class="opacity-0 group-hover:opacity-100 transition">✏️</button>
-      <button onclick="prefillPlayFor(${roundIdx}, '${player}', event)"
+      <button data-action="prefill-play" data-player="${player}" data-round="${roundIdx}"
               class="opacity-0 group-hover:opacity-100 transition text-emerald-700 hover:text-emerald-900"
               title="Open Play Helper">⚙️</button>
     </span>
@@ -101,8 +100,8 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true} = {}) {
       <div class="flex items-center gap-2">
         <input type="text" class="border rounded p-1 flex-1 min-w-0 edit-input"
                value="${pdata.map(w=>w.text).join(' ')}">
-        <button onclick="saveEdit('${player}', ${roundIdx}, this)" class="px-2">✔️</button>
-        <button onclick="cancelEdit(this)" class="px-2">❌</button>
+        <button data-action="save-edit" data-player="${player}" data-round="${roundIdx}" class="px-2">✔️</button>
+        <button data-action="cancel-edit" class="px-2">❌</button>
       </div>
     </div>
   ` : '';
@@ -123,7 +122,11 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true} = {}) {
 
 // Render a whole round block (interactive or static)
 function renderRound(round, roundIdx, {interactive = true} = {}) {
-  const rows = players
+  const playerList = (window.QuiddlerGame?.players)
+    ? window.QuiddlerGame.players
+    : (typeof players !== 'undefined' ? players : []);
+
+  const rows = playerList
     .map(player => renderPlayerRow(roundIdx, player, round.players[player], {interactive}))
     .join('');
   return `
@@ -167,4 +170,99 @@ function initChitTooltips(container = document) {
   });
 
   return { breakdownInstances, defInstances };
+}
+
+function renderOptimizedPlayFromResult(containerId, result) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  const usedWordChits = (result.words || [])
+    .map(w => renderChit(
+      { text: w.word, score: w.score, state: 'neutral' },
+      { interactive: false, forceState: 'neutral', forceShowDefIcon: true, showDefIcon: true }
+    ))
+    .join(' ');
+
+  let unusedChitHTML = '';
+  if (Array.isArray(result.unusedTiles) && result.unusedTiles.length) {
+    const toTok = (window.QuiddlerUI?.toCardToken || toCardToken);
+    const parse = (window.QuiddlerUI?.parseCards || parseCards);
+    const calc  = (window.QuiddlerUI?.calculateScore || calculateScore);
+
+    const combined = '-' + result.unusedTiles.map(toTok).join('');
+    const unusedScore = calc(parse(combined.replace('-', '')));
+    unusedChitHTML = renderChit(
+      { text: combined, score: unusedScore, state: 'invalid' },
+      { interactive: false, forceState: 'invalid', showDefIcon: false }
+    );
+  }
+
+  let discardChitHTML = '';
+  if (result.discardTile) {
+    const toTok = (window.QuiddlerUI?.toCardToken || toCardToken);
+    const parse = (window.QuiddlerUI?.parseCards || parseCards);
+    const calc  = (window.QuiddlerUI?.calculateScore || calculateScore);
+
+    const discardText = '-' + toTok(result.discardTile);
+    const discardScore = calc(parse(discardText.replace('-', '')));
+    discardChitHTML = renderChit(
+      { text: discardText, score: discardScore, state: 'neutral' },
+      {
+        interactive: false,
+        forceState: 'neutral',
+        showDefIcon: false,
+        extraClasses: 'bg-yellow-200'
+      }
+    );
+  }
+
+  const base     = Number(result.baseScore ?? 0);
+  const leftover = Number(result.leftoverValue ?? 0);
+  const baseShown = Math.max(base - leftover, 0);
+
+  const bLong = Number(result?.bonus?.longest ?? 0);
+  const bMost = Number(result?.bonus?.most ?? 0);
+  const total = Number(result.totalScore ?? (base + bLong + bMost));
+  const hasBonus = Boolean(bLong || bMost);
+
+  const breakdownInline = hasBonus
+    ? ` <span class="text-gray-600 text-[18px]">(${baseShown}${bLong ? ' + 🦒' : ''}${bMost ? ' + 🥒' : ''})</span>`
+    : '';
+
+  el.innerHTML = `
+    <div class="space-y-2">
+      <div class="flex items-baseline gap-2">
+        <span class="text-[18px] font-semibold">Score:</span>
+        <span class="text-[18px] font-semibold tabular-nums">${total}</span>
+        ${breakdownInline}
+      </div>
+      <div class="flex flex-wrap items-center gap-1">
+        ${usedWordChits} ${unusedChitHTML} ${discardChitHTML}
+      </div>
+    </div>
+  `;
+
+  el.querySelectorAll('.def-open').forEach(icon => {
+    icon.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const w = icon.getAttribute('data-word') || '';
+      if (window.QuiddlerTools?.showDict) await window.QuiddlerTools.showDict(w);
+    });
+  });
+
+  initChitTooltips(el);
+}
+
+// Expose render helpers under a namespace
+if (typeof window !== 'undefined') {
+  window.QuiddlerRender = Object.assign({}, window.QuiddlerRender || {}, {
+    renderChit,
+    renderPlayerRowHeader,
+    renderRowControls,
+    renderPlayerRow,
+    renderRound,
+    initChitTooltips,
+    renderOptimizedPlayFromResult,
+  });
 }

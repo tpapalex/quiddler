@@ -40,3 +40,14 @@ function breakdownStr(wordText) {
 function chitColorClass(word) {
   return word.state === 'invalid' ? 'bg-red-300' : word.state === 'valid' ? 'bg-green-300' : 'bg-gray-200';
 }
+
+// Expose UI helpers under a namespace
+if (typeof window !== 'undefined') {
+  window.QuiddlerUI = Object.assign({}, window.QuiddlerUI || {}, {
+    parseCards,
+    calculateScore,
+    toCardToken,
+    pointsArrayFor,
+    breakdownStr,
+  });
+}

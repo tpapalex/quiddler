@@ -305,76 +305,52 @@ function chooseBestPlay(candidates, rackCounts, params = {}) {
   };
 }
 
-function renderOptimizedPlayFromResult(containerId, result) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
+function optimize(params) {
+  const {
+    tiles = '',
+    noDiscard = false,
+    commonOnly = false,
+    override2and3 = false,
+    minZipF = 0,
+    currentLongest = 0,
+    currentMost = 0,
+  } = params || {};
 
-  const usedWordChits = (result.words || [])
-    .map(w => renderChit(
-      { text: w.word, score: w.score, state: 'neutral' },
-      { interactive: false, forceState: 'neutral', forceShowDefIcon: true, showDefIcon: true }
-    ))
-    .join(' ');
+  const rack = parseCards(String(tiles)).map(w => w.replace(/[()]/g, '').toLowerCase());
+  const rackCounts = countRack(rack, DIGRAPHS);
 
-  let unusedChitHTML = '';
-  if (Array.isArray(result.unusedTiles) && result.unusedTiles.length) {
-    const combined = '-' + result.unusedTiles.map(toCardToken).join('');
-    const unusedScore = calculateScore(parseCards(combined.replace('-', '')));
-    unusedChitHTML = renderChit(
-      { text: combined, score: unusedScore, state: 'invalid' },
-      { interactive: false, forceState: 'invalid', showDefIcon: false }
-    );
-  }
+  const lemmatizer = (typeof window !== 'undefined') ? window.winkLemmatizer : undefined;
 
-  let discardChitHTML = '';
-  if (result.discardTile) {
-    const discardText = '-' + toCardToken(result.discardTile);
-    const discardScore = calculateScore(parseCards(discardText.replace('-', '')));
-    discardChitHTML = renderChit(
-      { text: discardText, score: discardScore, state: 'neutral' },
-      {
-        interactive: false,
-        forceState: 'neutral',
-        showDefIcon: false,
-        extraClasses: 'bg-yellow-200'
-      }
-    );
-  }
+  // Resolve frequency list from global if available
+  const wf = (typeof wordFreq !== 'undefined') ? wordFreq
+            : (typeof window !== 'undefined' && Array.isArray(window.wordFreq) ? window.wordFreq : undefined);
 
-  const base     = Number(result.baseScore ?? 0);
-  const leftover = Number(result.leftoverValue ?? 0);
-  const baseShown = Math.max(base - leftover, 0);
+  const commonGate = (commonOnly && Array.isArray(wf) && wf.length)
+    ? makeCommonGateFromEntries(wf, { mode: 'zipf', override2and3, minZipF }, lemmatizer)
+    : null;
 
-  const bLong = Number(result?.bonus?.longest ?? 0);
-  const bMost = Number(result?.bonus?.most ?? 0);
-  const total = Number(result.totalScore ?? (base + bLong + bMost));
-  const hasBonus = Boolean(bLong || bMost);
+  const trie = buildTrie(Object.keys(validWordsMap), maxRound);
+  const candidates = generateWordCandidates(trie, rackCounts, 2, { commonGate });
 
-  const breakdownInline = hasBonus
-    ? ` <span class="text-gray-600 text-[18px]">(${baseShown}${bLong ? ' + 🦒' : ''}${bMost ? ' + 🥒' : ''})</span>`
-    : '';
-
-  el.innerHTML = `
-    <div class="space-y-2">
-      <div class="flex items-baseline gap-2">
-        <span class="text-[18px] font-semibold">Score:</span>
-        <span class="text-[18px] font-semibold tabular-nums">${total}</span>
-        ${breakdownInline}
-      </div>
-      <div class="flex flex-wrap items-center gap-1">
-        ${usedWordChits} ${unusedChitHTML} ${discardChitHTML}
-      </div>
-    </div>
-  `;
-
-  el.querySelectorAll('.def-open').forEach(icon => {
-    icon.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      const w = icon.getAttribute('data-word') || '';
-      if (window.QuiddlerTools?.showDict) await window.QuiddlerTools.showDict(w);
-    });
+  const bestplay = chooseBestPlay(candidates, rackCounts, {
+    noDiscard,
+    currentLongest: currentLongest === 0 ? Infinity : currentLongest,
+    currentMost:    currentMost    === 0 ? Infinity : currentMost,
+    longestBonus: typeof longestWordPoints === 'number' ? longestWordPoints : 0,
+    mostBonus:    typeof mostWordsPoints  === 'number' ? mostWordsPoints  : 0,
   });
 
-  initChitTooltips(el);
+  return bestplay;
+}
+
+if (typeof window !== 'undefined') {
+  // Namespace for clarity
+  window.QuiddlerSolver = Object.assign({}, window.QuiddlerSolver || {}, {
+    buildTrie,
+    countRack,
+    makeCommonGateFromEntries,
+    generateWordCandidates,
+    chooseBestPlay,
+    optimize,
+  });
 }
