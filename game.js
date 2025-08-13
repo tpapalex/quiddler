@@ -105,6 +105,9 @@ function startGame() {
   const submitBtn = document.getElementById('submitRoundBtn');
   if (submitBtn) submitBtn.disabled = false;
 
+  // Make sure round inputs are visible when starting anew
+  document.getElementById('scoreInputs')?.classList.remove('hidden');
+
   document.getElementById('gameGo').textContent = 'Restart Game';
   setupRound();
 }
@@ -125,12 +128,15 @@ function setupRound() {
       </div>
     `).join('')}`;
 
-  // Pressing Enter on any player's input submits the round
+  // Ensure inputs are visible in case a previous game hid them
+  document.getElementById('scoreInputs')?.classList.remove('hidden');
+
+  // Pressing Enter on any player's input submits the round (unless game is over)
   document.querySelectorAll('.player-words').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        nextRound();
+        if (!gameOver) nextRound();
       }
     });
   });
@@ -154,6 +160,7 @@ function validateWord(word) {
  * Read all players' inputs for the round, store, recalc totals, and advance.
  */
 function nextRound() {
+  if (gameOver) return; // do nothing if game has ended
   const round = { roundNum: currentRound, players: {} };
 
   document.querySelectorAll('.player-words').forEach(input => {
@@ -653,11 +660,17 @@ function endGame(completedAllRounds = false) {
   const submitBtn = document.getElementById('submitRoundBtn');
   if (submitBtn) submitBtn.disabled = true;
 
+  // Remove and hide current round inputs so Enter can't submit new rounds
+  const inputs = document.getElementById('scoreInputs');
+  if (inputs) { inputs.innerHTML = ''; inputs.classList.add('hidden'); }
+  const header = document.getElementById('roundHeader');
+  if (header) header.textContent = 'Game Over';
+
   // Build summary HTML
   const list = Object.entries(scores)
     .map(([player, score]) => ({ player, score }))
     .sort((a, b) => b.score - a.score)
-    .map(({player, score}, idx) => `<li class="mb-1">${idx + 1}. <strong>${player}</strong> — ${score} points</li>`) 
+    .map(({player, score}, idx) => `<li class="mb-1"><strong>${player}</strong> — ${score} points</li>`) 
     .join('');
   const summaryHTML = `
     <div class="mb-2">Rounds played: ${roundsData.length}</div>
@@ -666,11 +679,35 @@ function endGame(completedAllRounds = false) {
   const summaryEl = document.getElementById('endGameSummary');
   if (summaryEl) summaryEl.innerHTML = summaryHTML;
 
-  setElementVisible(document.getElementById('endGameModal'), true);
+  const modal = document.getElementById('endGameModal');
+  setElementVisible(modal, true);
+
+  // Allow closing by clicking outside the panel or pressing Escape
+  const clickHandler = (e) => {
+    if (e.target === modal) closeEndGameDialog();
+  };
+  const escHandler = (e) => {
+    if (e.key === 'Escape') closeEndGameDialog();
+  };
+  modal.__clickToClose = clickHandler;
+  modal.addEventListener('click', clickHandler);
+  modal.__escToClose = escHandler;
+  document.addEventListener('keydown', escHandler);
 }
 
 function closeEndGameDialog() {
-  setElementVisible(document.getElementById('endGameModal'), false);
+  const modal = document.getElementById('endGameModal');
+  setElementVisible(modal, false);
+
+  // Remove temporary listeners if present
+  if (modal && modal.__clickToClose) {
+    modal.removeEventListener('click', modal.__clickToClose);
+    delete modal.__clickToClose;
+  }
+  if (modal && modal.__escToClose) {
+    document.removeEventListener('keydown', modal.__escToClose);
+    delete modal.__escToClose;
+  }
 }
 
 // Restart a fresh game using the same players/bonuses; dealer rotates (do not reset currentDealerIdx)
@@ -694,7 +731,6 @@ function restartSameSettings() {
   scores = {};
   currentRound = 3;
   roundsData = [];
-  // Keep currentDealerIdx to control rotation behavior as per above
 
   players.forEach(p => { scores[p] = 0; });
 
@@ -710,6 +746,9 @@ function restartSameSettings() {
 
   const submitBtn = document.getElementById('submitRoundBtn');
   if (submitBtn) submitBtn.disabled = false;
+
+  // Ensure inputs visible again
+  document.getElementById('scoreInputs')?.classList.remove('hidden');
 
   setupRound();
 }
