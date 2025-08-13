@@ -78,8 +78,8 @@
     <div class="fixed bottom-6 right-6 flex flex-col gap-3 z-50">
       <button id="dictToolBtn"
               class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg"
-              aria-label="Open Dictionary"
-              data-tippy-content="Dictionary"
+              aria-label="Dictionary (⌘/Ctrl+D)"
+              data-tippy-content="Dictionary (⌘/Ctrl+D)"
               type="button">
         <img src="https://cdn.jsdelivr.net/npm/heroicons@2.1.5/24/outline/book-open.svg"
              class="w-7 h-7 invert" alt="" />
@@ -87,8 +87,8 @@
 
       <button id="optToolBtn"
               class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg"
-              aria-label="Open Optimizer"
-              data-tippy-content="Solver"
+              aria-label="Solver (⌘/Ctrl+S)"
+              data-tippy-content="Solver (⌘/Ctrl+S)"
               type="button">
         <img src="https://cdn.jsdelivr.net/npm/heroicons@2.1.5/24/outline/cog-6-tooth.svg"
              class="w-7 h-7 invert" alt="" />
@@ -277,6 +277,20 @@
         (window.QuiddlerGame?.closeEndGameDialog)?.();
         (window.QuiddlerGame?.resetToPreGame)?.();
       });
+
+      // Ensure initial focus sticks on pre-game players input
+      function focusPlayersIfPreGame() {
+        const pre = document.getElementById('preGameConfig');
+        const p = document.getElementById('playersInput');
+        if (pre && !pre.classList.contains('hidden') && p && !p.disabled) {
+          p.focus();
+          p.select?.();
+        }
+      }
+      // Run after bootstrap and next tick to avoid any competing focus
+      focusPlayersIfPreGame();
+      setTimeout(focusPlayersIfPreGame, 0);
+      requestAnimationFrame(focusPlayersIfPreGame);
     </script>
 </body>
 </html>

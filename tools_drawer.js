@@ -18,11 +18,32 @@ function initToolsDrawer(){
     void backdrop.offsetWidth; // force reflow for transition
     backdrop.classList.remove('opacity-0');
   }
+  function focusFirstEmptyPlayerInput() {
+    const inputs = Array.from(document.querySelectorAll('.player-words'));
+    if (inputs.length > 0) {
+      const empty = inputs.find(i => !i.value || i.value.trim() === '');
+      const target = empty || inputs[0];
+      target?.focus();
+      target?.select?.();
+      return;
+    }
+    // Fallback to players input on pre-game screen
+    const p = document.getElementById('playersInput');
+    const pre = document.getElementById('preGameConfig');
+    if (p && pre && !pre.classList.contains('hidden') && !p.disabled) {
+      p.focus(); p.select?.();
+    }
+  }
   function closeDrawer() {
     // Slide out drawer and fade out backdrop
     drawer.classList.add('translate-x-full');
     backdrop.classList.add('opacity-0');
-    const onEnd = () => { backdrop.classList.add('hidden'); backdrop.removeEventListener('transitionend', onEnd); };
+    const onEnd = () => {
+      backdrop.classList.add('hidden');
+      backdrop.removeEventListener('transitionend', onEnd);
+      // After drawer closes, refocus the first empty player input (or playersInput if pre-game)
+      setTimeout(() => focusFirstEmptyPlayerInput(), 0);
+    };
     backdrop.addEventListener('transitionend', onEnd);
   }
 
@@ -39,7 +60,29 @@ function initToolsDrawer(){
   });
   closeBtn.addEventListener('click', closeDrawer);
   backdrop.addEventListener('click', closeDrawer);
-  document.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') closeDrawer(); });
+  document.addEventListener('keydown', (e) => {
+    // Global shortcuts
+    if (e.key === 'Escape') {
+      closeDrawer();
+      return;
+    }
+    const isAccel = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey;
+    if (!isAccel) return;
+    const k = (e.key || '').toLowerCase();
+    if (k === 'd') {
+      // Open Dictionary
+      e.preventDefault();
+      openDrawer();
+      showTab('dict');
+      setTimeout(() => document.getElementById('dictInput')?.focus(), 0);
+    } else if (k === 's') {
+      // Open Solver (Play Helper)
+      e.preventDefault();
+      openDrawer();
+      showTab('play');
+      setTimeout(() => document.getElementById('tilesInput')?.focus(), 0);
+    }
+  });
 
   // Tabs
   const tabDict = document.getElementById('toolsTabDict');
@@ -60,8 +103,10 @@ function initToolsDrawer(){
     tabPlay.classList.toggle('bg-gray-100', isDict);
     tabPlay.classList.toggle('text-gray-600', isDict);
 
-    // Focus appropriate input after switching tabs
+    // Focus appropriate input after switching tabs, but only if drawer is open
     setTimeout(() => {
+      const isOpen = !drawer.classList.contains('translate-x-full');
+      if (!isOpen) return;
       if (isDict) document.getElementById('dictInput')?.focus();
       else document.getElementById('tilesInput')?.focus();
     }, 0);
