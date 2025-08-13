@@ -92,11 +92,17 @@ function initToolsDrawer(){
       localWrap.classList.remove('hidden');
     }
 
-    // Prepare online area
+    // If no local definition, do NOT fetch or show online
+    if (!local) {
+      loadingEl?.classList.add('hidden');
+      onlineWrap?.classList.add('hidden');
+      return;
+    }
+
+    // Prepare online area and fetch only when local exists
     onlineWrap?.classList.add('hidden');
     loadingEl?.classList.remove('hidden');
 
-    // Fetch online
     const online = await getWordDefinitionAPI(cleaned);
 
     // Update online section

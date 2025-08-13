@@ -4,7 +4,7 @@
 // Helpers to look up definitions for a word:
 // - getWordDefinitionLocal(word): case-insensitive lookup from collins_dictionary.js (validWordsMap)
 // - getWordDefinitionAPI(word): fetch from Free Dictionary API and format senses with <br>
-// - getWordDefinition(word): try API first, then fall back to local; returns a human-readable string
+// - getWordDefinition(word): require a local definition; if present, try API, else return not-found
 //
 // Notes:
 // - Returned strings may contain HTML <br> tags for multiple senses (rendered directly in UI).
@@ -63,23 +63,21 @@ async function getWordDefinitionAPI(word) {
   }
 }
 
-// Top-level: try API first; if it fails/returns null, fall back to local.
-// Returns a string: either HTML with <br> breaks, a local definition, or the not-found message.
+// Top-level: only show online definition if the word exists in the local dictionary.
+// Returns a string: if local exists, prefer API result, else local; otherwise the not-found message.
 async function getWordDefinition(word) {
   const cleanedWord = plainWord(word);
   if (!cleanedWord) return 'Definition not found...';
 
-  // Try API (catch to ensure fallback still runs)
-  let definition = null;
+  // Require local definition to consider API
+  const local = getWordDefinitionLocal(cleanedWord);
+  if (!local) return 'Definition not found...';
+
+  // Try API; if it fails or has no match, fall back to local
   try {
-    definition = await getWordDefinitionAPI(cleanedWord);
+    const online = await getWordDefinitionAPI(cleanedWord);
+    return online ?? local;
   } catch {
-    // swallow; we'll fall back to local
+    return local;
   }
-
-  if (definition == null) {
-    definition = getWordDefinitionLocal(cleanedWord);
-  }
-
-  return definition ?? 'Definition not found...';
 }
