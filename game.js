@@ -48,11 +48,13 @@ let mostWordsPoints = 0;
 let currentDealerIdx = 0;
 // New UI flow state
 let gameOver = false;                   // when true, no more rounds accepted
+let lastGameCompletedAllRounds = false; // track whether the prior game reached the final round
 
 /**
  * Initialize a new game from the UI controls and render round 1.
  */
 function startGame() {
+  if (gameStarted) return; // prevent duplicate init
   // Parse and clean players list
   players = document.getElementById('playersInput').value
     .split(',')
@@ -123,6 +125,20 @@ function setupRound() {
       </div>
     `).join('')}`;
 
+  // Pressing Enter on any player's input submits the round
+  document.querySelectorAll('.player-words').forEach(inp => {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        nextRound();
+      }
+    });
+  });
+
+  // Focus the first player's input for quick entry
+  const firstInput = document.querySelector('.player-words');
+  if (firstInput) { firstInput.focus(); firstInput.select?.(); }
+
   currentDealerIdx++;
 }
 
@@ -160,8 +176,8 @@ function nextRound() {
     currentRound += 1;
     setupRound();
   } else {
-    // End of game: show summary modal
-    endGame();
+    // End of game: show summary modal (completed all rounds)
+    endGame(true);
   }
 }
 
@@ -455,6 +471,14 @@ document.getElementById('playersInput')?.addEventListener('input', function() {
   }
 });
 
+// Pressing Enter on the players input starts the game
+document.getElementById('playersInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (!gameStarted) startGame();
+  }
+});
+
 function updateBonusInputs() {
   document.getElementById('longestWordPoints').disabled = !document.getElementById('longestWordBonus').checked;
   document.getElementById('mostWordsPoints').disabled = !document.getElementById('mostWordsBonus').checked;
@@ -588,6 +612,7 @@ function resetToPreGame() {
 
   gameStarted = false;
   gameOver = false;
+  lastGameCompletedAllRounds = false;
   players = [];
   scores = {};
   currentRound = 3;
@@ -612,18 +637,23 @@ function resetToPreGame() {
   document.getElementById('longestWordPoints').disabled = false;
   document.getElementById('mostWordsPoints').disabled = false;
 
+  // Focus player names input
+  const p = document.getElementById('playersInput');
+  if (p) { p.focus(); p.select?.(); }
+
   // Ensure submit is enabled for the next game
   const submitBtn = document.getElementById('submitRoundBtn');
   if (submitBtn) submitBtn.disabled = false;
 }
 
-function endGame() {
+// Show end-of-game summary modal and disable further input
+function endGame(completedAllRounds = false) {
   gameOver = true;
-  // Disable submit button to prevent further rounds
+  lastGameCompletedAllRounds = !!completedAllRounds;
   const submitBtn = document.getElementById('submitRoundBtn');
   if (submitBtn) submitBtn.disabled = true;
 
-  // Build summary
+  // Build summary HTML
   const list = Object.entries(scores)
     .map(([player, score]) => ({ player, score }))
     .sort((a, b) => b.score - a.score)
@@ -643,36 +673,49 @@ function closeEndGameDialog() {
   setElementVisible(document.getElementById('endGameModal'), false);
 }
 
+// Restart a fresh game using the same players/bonuses; dealer rotates (do not reset currentDealerIdx)
 function restartSameSettings() {
-  // Use existing players/bonuses; reset rounds and totals
   if (!players || players.length === 0) {
-    // If somehow not initialized, fall back to pre-game
     resetToPreGame();
     return;
   }
 
   closeEndGameDialog();
 
+  // If previous game did NOT complete all rounds, the current round's dealer hasn't dealt yet.
+  // Undo the auto-advance done in setupRound so the same dealer starts this new game.
+  if (!lastGameCompletedAllRounds && players.length > 0) {
+    currentDealerIdx = (currentDealerIdx - 1 + players.length) % players.length;
+  }
+
   gameStarted = true;
   gameOver = false;
+  lastGameCompletedAllRounds = false;
   scores = {};
   currentRound = 3;
   roundsData = [];
-  // Keep currentDealerIdx to rotate dealer to the next player across games
+  // Keep currentDealerIdx to control rotation behavior as per above
 
-  players.forEach(p => scores[p] = 0);
+  players.forEach(p => { scores[p] = 0; });
 
-  // UI resets
+  // Clear UI from prior game
   document.getElementById('scoreTotals').innerHTML = '';
   document.getElementById('previousRounds').innerHTML = '';
-  const submitBtn = document.getElementById('submitRoundBtn');
-  if (submitBtn) submitBtn.disabled = false;
 
-  // Ensure visibility
+  // Ensure proper visibility/state
   document.getElementById('preGameConfig')?.classList.add('hidden');
   document.getElementById('gameArea')?.classList.remove('hidden');
   document.getElementById('endGameBtn')?.classList.remove('hidden');
   document.getElementById('currentBonuses')?.classList.remove('hidden');
 
+  const submitBtn = document.getElementById('submitRoundBtn');
+  if (submitBtn) submitBtn.disabled = false;
+
   setupRound();
+}
+
+// On first load, focus players input if in pre-game state
+if (!gameStarted) {
+  const p = document.getElementById('playersInput');
+  if (p && !p.disabled) { p.focus(); p.select?.(); }
 }

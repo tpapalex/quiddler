@@ -30,10 +30,12 @@ function initToolsDrawer(){
   document.getElementById('dictToolBtn')?.addEventListener('click', () => {
     openDrawer();
     showTab('dict');
+    setTimeout(() => document.getElementById('dictInput')?.focus(), 0);
   });
   document.getElementById('optToolBtn')?.addEventListener('click', () => {
     openDrawer();
     showTab('play');
+    setTimeout(() => document.getElementById('tilesInput')?.focus(), 0);
   });
   closeBtn.addEventListener('click', closeDrawer);
   backdrop.addEventListener('click', closeDrawer);
@@ -57,6 +59,12 @@ function initToolsDrawer(){
     tabPlay.classList.toggle('text-gray-900', !isDict);
     tabPlay.classList.toggle('bg-gray-100', isDict);
     tabPlay.classList.toggle('text-gray-600', isDict);
+
+    // Focus appropriate input after switching tabs
+    setTimeout(() => {
+      if (isDict) document.getElementById('dictInput')?.focus();
+      else document.getElementById('tilesInput')?.focus();
+    }, 0);
   }
   tabDict.addEventListener('click', () => showTab('dict'));
   tabPlay.addEventListener('click', () => showTab('play'));
@@ -146,6 +154,13 @@ function initToolsDrawer(){
   function cleanInt(el){ const n = Number(el.value); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0; }
 
   playGo.addEventListener('click', onFindBestPlay);
+  // Pressing Enter in the tiles input triggers Solve
+  tilesInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      onFindBestPlay();
+    }
+  });
 
   async function onFindBestPlay() {
     // Normalize inputs, then call the solver and render results
@@ -188,10 +203,12 @@ function initToolsDrawer(){
       showTab('dict');
       dictInput.value = plainWord(word);
       await renderDefinition(dictInput.value);
+      setTimeout(() => { dictInput?.focus(); dictInput?.select?.(); }, 0);
     },
     showPlay: () => {
       openDrawer();
       showTab('play');
+      setTimeout(() => document.getElementById('tilesInput')?.focus(), 0);
     },
     prefillPlay: ({ tiles, currentLongest, currentMost }) => {
       // Pre-populate Play Helper with a row's tiles and current opponent thresholds.
