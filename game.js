@@ -50,6 +50,126 @@ let currentDealerIdx = 0;
 let gameOver = false;                   // when true, no more rounds accepted
 let lastGameCompletedAllRounds = false; // track whether the prior game reached the final round
 
+// --- Persistence (localStorage) ---
+const Q_STORAGE_KEY = 'quiddlerGameStateV1';
+let __suppressAutoSave = false; // guard to avoid recursive saves during load
+
+function serializeGameState() {
+  if (!gameStarted || !players.length) return null;
+  return {
+    version: 1,
+    players: players.slice(),
+    roundsData: roundsData.map(r => ({
+      roundNum: r.roundNum,
+      players: Object.fromEntries(Object.entries(r.players || {}).map(([p, arr]) => [p, arr.map(w => ({
+        text: w.text,
+        score: w.score,
+        state: w.state,
+        challenger: w.challenger == null ? null : w.challenger
+      }))]))
+    })),
+    currentRound,
+    currentDealerIdx,
+    longestWordBonus,
+    mostWordsBonus,
+    longestWordPoints,
+    mostWordsPoints,
+    gameOver,
+    lastGameCompletedAllRounds
+  };
+}
+function saveGameState() {
+  if (__suppressAutoSave) return;
+  try {
+    const data = serializeGameState();
+    if (!data) {
+      localStorage.removeItem(Q_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(Q_STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Persist save failed', e);
+  }
+}
+function loadGameState() {
+  try {
+    const raw = localStorage.getItem(Q_STORAGE_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data || data.version !== 1) return;
+
+    __suppressAutoSave = true;
+
+    players = data.players || [];
+    roundsData = (data.roundsData || []).map(r => ({
+      roundNum: r.roundNum,
+      players: Object.fromEntries(Object.entries(r.players || {}).map(([p, arr]) => [p, arr.map(w => ({
+        text: w.text,
+        score: w.score,
+        state: w.state || 'neutral',
+        challenger: w.challenger == null ? null : w.challenger
+      }))]))
+    }));
+    currentRound = data.currentRound || 3;
+    currentDealerIdx = data.currentDealerIdx || 0;
+    longestWordBonus = !!data.longestWordBonus;
+    mostWordsBonus = !!data.mostWordsBonus;
+    longestWordPoints = +data.longestWordPoints || 0;
+    mostWordsPoints = +data.mostWordsPoints || 0;
+    gameOver = !!data.gameOver;
+    lastGameCompletedAllRounds = !!data.lastGameCompletedAllRounds;
+    gameStarted = true;
+
+    // --- Fix: if saved currentRound equals last completed round, advance for next input ---
+    if (!gameOver && roundsData.length) {
+      const last = roundsData[roundsData.length - 1];
+      if (currentRound <= last.roundNum && last.roundNum < maxRound) {
+        currentRound = last.roundNum + 1; // show the next round's input
+      }
+    }
+
+    // Reflect UI controls
+    const pInput = document.getElementById('playersInput');
+    if (pInput) { pInput.value = players.join(','); pInput.disabled = true; }
+    const lCB = document.getElementById('longestWordBonus');
+    const mCB = document.getElementById('mostWordsBonus');
+    if (lCB) { lCB.checked = longestWordBonus; lCB.disabled = true; }
+    if (mCB) { mCB.checked = mostWordsBonus; mCB.disabled = true; }
+    const lPts = document.getElementById('longestWordPoints');
+    const mPts = document.getElementById('mostWordsPoints');
+    if (lPts) { lPts.value = longestWordPoints; lPts.disabled = true; }
+    if (mPts) { mPts.value = mostWordsPoints; mPts.disabled = true; }
+
+    document.getElementById('preGameConfig')?.classList.add('hidden');
+    document.getElementById('gameArea')?.classList.remove('hidden');
+    document.getElementById('currentBonuses')?.classList.remove('hidden');
+    document.getElementById('endGameBtn')?.classList.remove('hidden');
+    const goBtn = document.getElementById('gameGo'); if (goBtn) goBtn.textContent = 'Restart Game';
+
+    // Recompute (ensures scores and bonuses re-derived if logic changed)
+    recalculateScores();
+    updatePreviousRounds();
+
+    if (gameOver) {
+      // Re-show game over state & summary
+      endGame(lastGameCompletedAllRounds);
+    } else {
+      // Dealer index in saved state is always one ahead (setupRound increments after using it)
+      if (players.length) {
+        currentDealerIdx = (currentDealerIdx - 1 + players.length) % players.length;
+      }
+      // Rebuild current round input fields (next round to be played)
+      setupRound();
+    }
+  } catch (e) {
+    console.warn('Persist load failed', e);
+  } finally {
+    __suppressAutoSave = false;
+    // Save immediately to normalize schema if needed
+    saveGameState();
+  }
+}
+
 /**
  * Initialize a new game from the UI controls and render round 1.
  */
@@ -110,6 +230,7 @@ function startGame() {
 
   document.getElementById('gameGo').textContent = 'Restart Game';
   setupRound();
+  saveGameState();
 }
 
 /**
@@ -186,6 +307,8 @@ function nextRound() {
     // End of game: show summary modal (completed all rounds)
     endGame(true);
   }
+  // Ensure latest round number (after possible increment) is saved
+  saveGameState();
 }
 
 // ---------- Helpers ----------
@@ -303,6 +426,7 @@ function recalculateScores() {
   });
 
   updateScores();
+  saveGameState();
 }
 
 /**
@@ -604,6 +728,9 @@ if (typeof window !== 'undefined') {
   });
 
   window.QuiddlerGame = ns;
+  // Add persistence helpers to namespace
+  window.QuiddlerGame.saveGameState = saveGameState;
+  window.QuiddlerGame.loadGameState = loadGameState;
 }
 
 // --------------- New UI Flow helpers ---------------
@@ -651,6 +778,8 @@ function resetToPreGame() {
   // Ensure submit is enabled for the next game
   const submitBtn = document.getElementById('submitRoundBtn');
   if (submitBtn) submitBtn.disabled = false;
+
+  try { localStorage.removeItem(Q_STORAGE_KEY); } catch {}
 }
 
 // Show end-of-game summary modal and disable further input
@@ -753,8 +882,17 @@ function restartSameSettings() {
   setupRound();
 }
 
-// On first load, focus players input if in pre-game state
-if (!gameStarted) {
-  const p = document.getElementById('playersInput');
-  if (p && !p.disabled) { p.focus(); p.select?.(); }
-}
+// On first load, focus players input if in pre-game state (skip if a game was restored)
+(function(){
+  // Attempt to load any saved game once DOM is ready.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', loadGameState);
+  } else {
+    loadGameState();
+  }
+
+  if (!gameStarted) {
+    const p = document.getElementById('playersInput');
+    if (p && !p.disabled) { p.focus(); p.select?.(); }
+  }
+})();
