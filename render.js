@@ -131,7 +131,7 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true} = {}) {
 
   return `
     <div class="relative group items-start gap-2 flex flex-wrap sm:grid sm:items-baseline sm:grid-cols-[8ch_4ch_11ch_2.5rem_1fr]">
-      <div class="grid grid-cols-[8ch_4ch_minmax(0,1fr)_2.5rem] items-baseline gap-2 w-full sm:contents">
+      <div class="grid grid-cols-[7ch_4ch_minmax(0,1fr)_2.5rem] items-baseline gap-2 w-full sm:contents">
         ${header}
         ${controls}
       </div>
