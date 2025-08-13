@@ -23,7 +23,8 @@
     <div class="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">
         <h1 class="text-2xl font-bold mb-4">Quiddler Scoring App</h1>
 
-        <div class="mb-4">
+        <!-- Pre-game config (visible until a game starts) -->
+        <div id="preGameConfig" class="mb-4">
             <!-- Player names -->
             <label class="block font-semibold">Player Names (comma separated):</label>
             <input id="playersInput" class="w-full p-2 border rounded mt-2" placeholder="e.g., Alice,Bob,Charlie">
@@ -46,7 +47,7 @@
                 </div>
             </div>
 
-            <!-- Go button -->
+            <!-- Start Game button -->
             <button id="gameGo" class="mt-3 bg-blue-500 text-white py-2 px-4 rounded">Start Game</button>
         </div>
 
@@ -57,8 +58,11 @@
             <!-- Player round inputs -->
             <div id="scoreInputs"></div>
 
-            <!-- Submit button -->
-            <button id="submitRoundBtn" class="mt-3 bg-blue-500 text-white py-2 px-4 rounded">Submit Round</button>
+            <!-- Actions -->
+            <div class="mt-3 flex items-center gap-2">
+              <button id="submitRoundBtn" class="bg-blue-500 text-white py-2 px-4 rounded">Submit Round</button>
+              <button id="endGameBtn" class="bg-red-600 text-white py-2 px-4 rounded hidden">End Game</button>
+            </div>
 
             <!-- Overall summary -->
             <h3 class="font-semibold text-xl mt-6">Running Totals</h3>
@@ -212,6 +216,19 @@
       </div>
     </aside>
 
+    <!-- End Game Summary Modal -->
+    <div id="endGameModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
+      <div class="bg-white rounded-lg shadow-lg w-full max-w-lg p-4">
+        <h3 class="text-xl font-semibold mb-3">Game Over</h3>
+        <div id="endGameSummary" class="mb-4 text-sm"></div>
+        <div class="flex justify-end gap-2">
+          <button id="endModalCloseBtn" class="px-4 py-2 rounded border">Close</button>
+          <button id="endModalRestartBtn" class="px-4 py-2 rounded bg-gray-700 text-white">Restart Same Settings</button>
+          <button id="endModalNewBtn" class="px-4 py-2 rounded bg-blue-600 text-white">Start New Game</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Core data and helpers -->
     <script src="card_scores.js"></script>
     <script src="collins_dictionary.js"></script>
@@ -242,6 +259,23 @@
       });
       document.getElementById('submitRoundBtn')?.addEventListener('click', () => {
         (window.QuiddlerGame?.nextRound || window.nextRound)?.();
+      });
+
+      // End game button
+      document.getElementById('endGameBtn')?.addEventListener('click', () => {
+        (window.QuiddlerGame?.endGame)?.();
+      });
+
+      // End game modal buttons
+      document.getElementById('endModalCloseBtn')?.addEventListener('click', () => {
+        (window.QuiddlerGame?.closeEndGameDialog)?.();
+      });
+      document.getElementById('endModalRestartBtn')?.addEventListener('click', () => {
+        (window.QuiddlerGame?.restartSameSettings)?.();
+      });
+      document.getElementById('endModalNewBtn')?.addEventListener('click', () => {
+        (window.QuiddlerGame?.closeEndGameDialog)?.();
+        (window.QuiddlerGame?.resetToPreGame)?.();
       });
     </script>
 </body>
