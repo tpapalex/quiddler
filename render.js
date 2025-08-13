@@ -80,9 +80,9 @@ function renderPlayerRowHeader(player, pdata) {
   const breakdown = parts.join(' ');
 
   return `
-    <span class="w-28 sm:w-20 shrink-0 truncate" title="${player}">${player}</span>
-    <span class="w-10 sm:w-10 shrink-0 tabular-nums">${pdata.roundScore}</span>
-    <span class="w-60 sm:w-32 shrink-0 text-gray-600"
+    <span class="truncate min-w-0 flex-none max-w-[9ch] sm:justify-self-start" title="${player}">${player}</span>
+    <span class="tabular-nums text-right justify-self-end flex-none w-[4ch]">${pdata.roundScore}</span>
+    <span class="text-gray-600 truncate min-w-0 flex-1 sm:flex-none sm:block"
           title="${(pdata.challengeDeductions || pdata.bonus) ? '('+breakdown+')' : ''}">
       ${(pdata.challengeDeductions || pdata.bonus) ? '('+breakdown+')' : ''}
     </span>
@@ -93,7 +93,7 @@ function renderPlayerRowHeader(player, pdata) {
 function renderRowControls(roundIdx, player) {
   // Edit toggles inline text editing; gear pre-fills Play Helper with current row
   return `
-    <span class="w-10 shrink-0 flex items-center gap-1 justify-start">
+    <span class="flex-none flex items-center gap-1 justify-start">
       <button data-action="edit" data-player="${player}" data-round="${roundIdx}"
               class="opacity-0 group-hover:opacity-100 transition">✏️</button>
       <button data-action="prefill-play" data-player="${player}" data-round="${roundIdx}"
@@ -125,10 +125,10 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true} = {}) {
   ` : '';
 
   return `
-    <div class="flex items-center gap-2 relative group flex-wrap">
+    <div class="relative group items-start gap-2 flex flex-wrap sm:grid sm:items-baseline sm:grid-cols-[9ch_4ch_11ch_2.5rem_1fr]">
       ${header}
-      ${controls}
-      <div class="flex-1 min-w-0">
+      <div class="flex items-center justify-start w-[2.5rem]">${controls}</div>
+      <div class="min-w-0 flex-1 basis-full sm:basis-auto">
         <div class="chit-container flex flex-wrap gap-1">
           ${chits}
         </div>
