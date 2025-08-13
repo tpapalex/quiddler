@@ -167,6 +167,8 @@ function loadGameState() {
     // NEW: keep lists in sync with headers when restoring
     document.getElementById('scoreTotals')?.classList.toggle('hidden', !hasRounds);
     document.getElementById('previousRounds')?.classList.toggle('hidden', !hasRounds);
+    // NEW: toggle hint under Previous Rounds with the section
+    document.getElementById('previousRoundsHint')?.classList.toggle('hidden', !hasRounds);
   } catch (e) {
     console.warn('Persist load failed', e);
   } finally {
@@ -240,6 +242,8 @@ function startGame() {
   // NEW: also hide the lists themselves until there are rounds
   document.getElementById('scoreTotals')?.classList.add('hidden');
   document.getElementById('previousRounds')?.classList.add('hidden');
+  // NEW: hide the hint under Previous Rounds until there are rounds
+  document.getElementById('previousRoundsHint')?.classList.add('hidden');
   setupRound();
   saveGameState();
 }
@@ -252,7 +256,7 @@ function setupRound() {
   document.getElementById('roundHeader').innerText = `Round ${currentRound} Cards (${dealer} deals)`;
 
   document.getElementById('scoreInputs').innerHTML = `
-    <div class="mb-2 font-medium">Enter words separated by spaces, using parentheses around digraphs and a '-' prefix before all unused cards.</div>
+    <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces, using parentheses around digraphs and a '-' prefix before all unused cards.</div>
     ${players.map((player, i) => `
       <div class="player-input-row mb-2 flex items-center gap-2">
         <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1">${player}</label>
@@ -660,6 +664,8 @@ function updatePreviousRounds() {
   // NEW: keep containers in sync with header visibility
   document.getElementById('scoreTotals')?.classList.toggle('hidden', !hasRounds);
   document.getElementById('previousRounds')?.classList.toggle('hidden', !hasRounds);
+  // NEW: toggle hint visibility with section
+  document.getElementById('previousRoundsHint')?.classList.toggle('hidden', !hasRounds);
 
   const html = roundsData
     .slice()
@@ -825,6 +831,8 @@ function resetToPreGame() {
   // NEW: also hide the lists so totals don’t show without a title
   document.getElementById('scoreTotals')?.classList.add('hidden');
   document.getElementById('previousRounds')?.classList.add('hidden');
+  // NEW: hide the hint under Previous Rounds
+  document.getElementById('previousRoundsHint')?.classList.add('hidden');
 
   try { localStorage.removeItem(Q_STORAGE_KEY); } catch {}
 }
