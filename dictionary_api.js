@@ -66,7 +66,7 @@ async function getWordDefinitionAPI(word) {
 // Top-level: try API first; if it fails/returns null, fall back to local.
 // Returns a string: either HTML with <br> breaks, a local definition, or the not-found message.
 async function getWordDefinition(word) {
-  const cleanedWord = (word ?? '').replace(/[()]/g, '').trim();
+  const cleanedWord = (window.QuiddlerUI?.plainWord || (w => String(w ?? '').replace(/[()]/g, '').replace(/^-/, '').toLowerCase()))(word);
   if (!cleanedWord) return 'Definition not found...';
 
   // Try API (catch to ensure fallback still runs)

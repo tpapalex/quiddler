@@ -119,7 +119,7 @@ function setupRound() {
  * True if a bare word (parentheses removed) exists in the word list.
  */
 function validateWord(word) {
-  const cleanedWord = word.replace(/[()]/g, '').toUpperCase();
+  const cleanedWord = (window.QuiddlerUI?.plainWord || (w => String(w || '').replace(/[()]/g, '').replace(/^-/, '').toLowerCase()))(word).toUpperCase();
   return validWordsMap.hasOwnProperty(cleanedWord);
 }
 
@@ -173,7 +173,7 @@ function bonusEligibleWords(pdata) {
 // Longest word length (letters only).
 function longestWordLen(pdata) {
   return bonusEligibleWords(pdata)
-    .reduce((max, w) => Math.max(max, w.text.replace(/[()]/g, '').length), 0);
+    .reduce((max, w) => Math.max(max, (window.QuiddlerUI?.plainLength || (t => String(t || '').replace(/[()]/g, '').replace(/^-/, '').length))(w.text)), 0);
 }
 // Count of bonus-eligible words.
 function wordsCount(pdata) {

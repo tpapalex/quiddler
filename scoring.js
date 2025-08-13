@@ -29,10 +29,31 @@ function toCardToken(token) {
   return t.length > 1 ? `(${t})` : t;
 }
 
+// NEW: Normalize a token to its scoring key (strip parens, lowercase)
+function normalizeToken(token) {
+  return String(token || '').replace(/[()]/g, '').toLowerCase();
+}
+
 // Make the letter-points array for a word text (handles digraphs)
 function pointsArrayFor(wordText) {
   const letters = parseCards(wordText.replace('-', ''));
   return letters.map(l => cardScores[l.replace(/[()]/g, '').toLowerCase()] || 1);
+}
+
+// NEW: Join a list of tokens into a display word using parentheses for digraphs
+function joinTokensForDisplay(tokens) {
+  return (tokens || []).map(toCardToken).join('');
+}
+
+// NEW: Convert a chit text into its plain letters (lowercase, no parentheses or '-')
+function plainWord(wordText) {
+  const tokens = parseCards(String(wordText || '').replace('-', ''));
+  return tokens.map(normalizeToken).join('');
+}
+
+// NEW: Length of the plain word (letters only, digraphs count as 2 letters in dictionary spelling)
+function plainLength(wordText) {
+  return plainWord(wordText).length;
 }
 
 // For tooltip: "2 + 10 + 1"
@@ -54,5 +75,10 @@ if (typeof window !== 'undefined') {
     toCardToken,
     pointsArrayFor,
     breakdownStr,
+    // new exports
+    normalizeToken,
+    joinTokensForDisplay,
+    plainWord,
+    plainLength,
   });
 }

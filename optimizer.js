@@ -103,7 +103,8 @@ function generateWordCandidates(trie, rackCounts, minLen = 2, opts = {}) {
   const out = [];
   const path = [];
   const usedTokens = [];
-  const scoreTokens = ts => ts.reduce((s, t) => s + (cardScores[t] || 0), 0);
+  // use shared scoring util instead of local reducer
+  // const scoreTokens = ts => ts.reduce((s, t) => s + (cardScores[t] || 0), 0);
 
   function usageFromTokens(tokens) {
     const u = { singleCounts: Object.create(null), digraphCounts: Object.create(null) };
@@ -132,12 +133,15 @@ function generateWordCandidates(trie, rackCounts, minLen = 2, opts = {}) {
     const usage = usageFromTokens(usedTokens);
     const key = usageKey(usage);
 
-    const displayWord = usedTokens.map(t => t.length > 1 ? `(${t})` : t).join('');
+    const displayWord = (typeof joinTokensForDisplay === 'function')
+      ? joinTokensForDisplay(usedTokens)
+      : usedTokens.map(t => t.length > 1 ? `(${t})` : t).join('');
 
     let bucket = perWord.get(plainWord);
     if (!bucket) { bucket = new Map(); perWord.set(plainWord, bucket); }
     if (!bucket.has(key)) {
-      bucket.set(key, { word: displayWord, score: scoreTokens(usedTokens), usage, length: plainWord.length });
+      const score = (typeof calculateScore === 'function') ? calculateScore(usedTokens) : usedTokens.reduce((s, t) => s + (cardScores[t] || 0), 0);
+      bucket.set(key, { word: displayWord, score, usage, length: plainWord.length });
     }
   }
 
@@ -362,7 +366,7 @@ function optimize(params) {
     currentMost = 0,
   } = params || {};
 
-  const rack = parseCards(String(tiles)).map(w => w.replace(/[()]/g, '').toLowerCase());
+  const rack = parseCards(String(tiles)).map(t => (typeof normalizeToken === 'function' ? normalizeToken(t) : t.replace(/[()]/g, '').toLowerCase()));
   const rackCounts = countRack(rack, DIGRAPHS);
 
   const lemmatizer = (typeof window !== 'undefined') ? window.winkLemmatizer : undefined;
