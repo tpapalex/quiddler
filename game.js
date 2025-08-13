@@ -822,6 +822,17 @@ function endGame(completedAllRounds = false) {
   modal.addEventListener('click', clickHandler);
   modal.__escToClose = escHandler;
   document.addEventListener('keydown', escHandler);
+
+  // NEW: Press Enter to start a brand new game (not same settings)
+  const enterNewHandler = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      closeEndGameDialog();
+      resetToPreGame();
+    }
+  };
+  modal.__enterNewGame = enterNewHandler;
+  document.addEventListener('keydown', enterNewHandler);
 }
 
 function closeEndGameDialog() {
@@ -836,6 +847,10 @@ function closeEndGameDialog() {
   if (modal && modal.__escToClose) {
     document.removeEventListener('keydown', modal.__escToClose);
     delete modal.__escToClose;
+  }
+  if (modal && modal.__enterNewGame) {
+    document.removeEventListener('keydown', modal.__enterNewGame);
+    delete modal.__enterNewGame;
   }
 }
 
@@ -895,4 +910,30 @@ function restartSameSettings() {
     const p = document.getElementById('playersInput');
     if (p && !p.disabled) { p.focus(); p.select?.(); }
   }
+
+  // Global keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd+E -> End Game (only if a game is in progress and not already over)
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+      if (gameStarted && !gameOver) {
+        e.preventDefault();
+        endGame(false);
+        return;
+      }
+    }
+    // Ctrl/Cmd+R -> Restart same settings immediately (avoids browser reload)
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+      if (gameStarted) {
+        e.preventDefault();
+        restartSameSettings();
+        return;
+      }
+    }
+    // Ctrl/Cmd+Shift+Enter -> New Game (fresh settings input screen)
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.shiftKey && e.key === 'Enter') {
+      e.preventDefault();
+      resetToPreGame();
+      return;
+    }
+  });
 })();
