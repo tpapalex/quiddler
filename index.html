@@ -18,6 +18,13 @@
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
     <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/animations/scale.css"/>
+    <style>
+      /* Align player round input rows: fixed label column + flexible input column */
+      .player-input-row { display: grid; grid-template-columns: 16ch 1fr; gap: 0.5rem; align-items: center; }
+      @media (min-width: 640px) { /* sm */
+        .player-input-row { grid-template-columns: 20ch 1fr; }
+      }
+    </style>
 </head>
 <body class="bg-gray-100 p-4">
     <div class="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">

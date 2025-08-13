@@ -252,11 +252,11 @@ function setupRound() {
   document.getElementById('roundHeader').innerText = `Round ${currentRound} Cards (${dealer} deals)`;
 
   document.getElementById('scoreInputs').innerHTML = `
-    <div class="mb-2 font-medium">Enter your words separated by spaces, using parentheses around digraphs and a '-' prefix before all unused cards.</div>
-    ${players.map(player => `
-      <div class="mb-2 flex items-center">
-        <label class="font-semibold mr-2">${player}'s words:</label>
-        <input class="player-words flex-1 p-2 border rounded" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
+    <div class="mb-2 font-medium">Enter words separated by spaces, using parentheses around digraphs and a '-' prefix before all unused cards.</div>
+    ${players.map((player, i) => `
+      <div class="player-input-row mb-2 flex items-center gap-2">
+        <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1">${player}</label>
+        <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
       </div>
     `).join('')}`;
 
@@ -472,12 +472,21 @@ function prefillPlayFor(roundIdx, playerName, e) {
  */
 function enterEditMode(player, roundIdx, btn) {
   const row = btn.closest('.group');
-  const cell = row.querySelector('.flex-1.min-w-0');
+  const cell = row.querySelector('.row-chits-cell') || row.querySelector('.flex-1.min-w-0');
   if (!cell) return;
 
   const chits = cell.querySelector('.chit-container');
   const edit  = cell.querySelector('.edit-container');
   if (!edit) return;
+
+  // Swap controls to Save/Cancel
+  const controls = row.querySelector('.controls-cell');
+  if (controls) {
+    const viewC = controls.querySelector('.controls-view-mode');
+    const editC = controls.querySelector('.controls-edit-mode');
+    viewC?.classList.add('hidden');
+    editC?.classList.remove('hidden');
+  }
 
   chits?.classList.add('hidden');
   edit.classList.remove('hidden');
@@ -499,11 +508,20 @@ function enterEditMode(player, roundIdx, btn) {
 
 function cancelEdit(btn) {
   const row = btn.closest('.group');
-  const cell = row.querySelector('.flex-1.min-w-0');
+  const cell = row.querySelector('.row-chits-cell') || row.querySelector('.flex-1.min-w-0');
   if (!cell) return;
 
   cell.querySelector('.edit-container')?.classList.add('hidden');
   cell.querySelector('.chit-container')?.classList.remove('hidden');
+
+  // Restore controls to Edit/Gear
+  const controls = row.querySelector('.controls-cell');
+  if (controls) {
+    const viewC = controls.querySelector('.controls-view-mode');
+    const editC = controls.querySelector('.controls-edit-mode');
+    editC?.classList.add('hidden');
+    viewC?.classList.remove('hidden');
+  }
 }
 
 /**
@@ -511,7 +529,7 @@ function cancelEdit(btn) {
  */
 function saveEdit(player, roundIdx, btn) {
   const row = btn.closest('.group');
-  const cell = row.querySelector('.flex-1.min-w-0');
+  const cell = row.querySelector('.row-chits-cell') || row.querySelector('.flex-1.min-w-0');
   if (!cell) return;
 
   const input = cell.querySelector('.edit-input');
