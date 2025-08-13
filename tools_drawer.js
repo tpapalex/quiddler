@@ -104,15 +104,8 @@ function initToolsDrawer(){
     loadingEl?.classList.remove('hidden');
 
     const online = await getWordDefinitionAPI(cleaned);
-
-    // Update online section
+    renderOnlineDict(word, online, { senseLimit: 3 });
     loadingEl?.classList.add('hidden');
-    if (online && onlineEl && onlineWrap) {
-      onlineEl.innerHTML = online; // supports <br>
-      onlineWrap.classList.remove('hidden');
-    } else {
-      onlineWrap?.classList.add('hidden');
-    }
   }
 
   async function doLookup(){ await renderDefinition(dictInput.value); }
