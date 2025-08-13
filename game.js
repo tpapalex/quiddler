@@ -164,6 +164,9 @@ function loadGameState() {
     const hasRounds = roundsData.length > 0;
     document.getElementById('runningTotalsHeader')?.classList.toggle('hidden', !hasRounds);
     document.getElementById('previousRoundsHeader')?.classList.toggle('hidden', !hasRounds);
+    // NEW: keep lists in sync with headers when restoring
+    document.getElementById('scoreTotals')?.classList.toggle('hidden', !hasRounds);
+    document.getElementById('previousRounds')?.classList.toggle('hidden', !hasRounds);
   } catch (e) {
     console.warn('Persist load failed', e);
   } finally {
@@ -231,10 +234,12 @@ function startGame() {
   // Make sure round inputs are visible when starting anew
   document.getElementById('scoreInputs')?.classList.remove('hidden');
 
-  document.getElementById('gameGo').textContent = 'Restart Game';
   // Hide section headers until a first round exists
   document.getElementById('runningTotalsHeader')?.classList.add('hidden');
   document.getElementById('previousRoundsHeader')?.classList.add('hidden');
+  // NEW: also hide the lists themselves until there are rounds
+  document.getElementById('scoreTotals')?.classList.add('hidden');
+  document.getElementById('previousRounds')?.classList.add('hidden');
   setupRound();
   saveGameState();
 }
@@ -634,6 +639,9 @@ function updatePreviousRounds() {
   const hasRounds = roundsData.length > 0;
   document.getElementById('runningTotalsHeader')?.classList.toggle('hidden', !hasRounds);
   document.getElementById('previousRoundsHeader')?.classList.toggle('hidden', !hasRounds);
+  // NEW: keep containers in sync with header visibility
+  document.getElementById('scoreTotals')?.classList.toggle('hidden', !hasRounds);
+  document.getElementById('previousRounds')?.classList.toggle('hidden', !hasRounds);
 
   const html = roundsData
     .slice()
@@ -718,7 +726,7 @@ if (typeof window !== 'undefined') {
     endGame,
     closeEndGameDialog,
     resetToPreGame,
-    restartSameSettings, // export restart API
+    // removed restartSameSettings export
   });
 
   // Read-only getters for state
@@ -781,6 +789,10 @@ function resetToPreGame() {
   document.getElementById('longestWordPoints').disabled = false;
   document.getElementById('mostWordsPoints').disabled = false;
 
+  // Reset primary CTA label
+  const go = document.getElementById('gameGo');
+  if (go) go.textContent = 'Start Game';
+
   // Focus player names input
   const p = document.getElementById('playersInput');
   if (p) { p.focus(); p.select?.(); }
@@ -792,6 +804,9 @@ function resetToPreGame() {
   // Hide section headers
   document.getElementById('runningTotalsHeader')?.classList.add('hidden');
   document.getElementById('previousRoundsHeader')?.classList.add('hidden');
+  // NEW: also hide the lists so totals don’t show without a title
+  document.getElementById('scoreTotals')?.classList.add('hidden');
+  document.getElementById('previousRounds')?.classList.add('hidden');
 
   try { localStorage.removeItem(Q_STORAGE_KEY); } catch {}
 }
@@ -825,6 +840,9 @@ function endGame(completedAllRounds = false) {
   const modal = document.getElementById('endGameModal');
   setElementVisible(modal, true);
 
+  // Arm Enter-to-new-game after a short delay to avoid catching the submit Enter
+  modal.__enterArmTime = (typeof performance !== 'undefined' ? performance.now() : Date.now()) + 350;
+
   // Allow closing by clicking outside the panel or pressing Escape
   const clickHandler = (e) => {
     if (e.target === modal) closeEndGameDialog();
@@ -839,7 +857,10 @@ function endGame(completedAllRounds = false) {
 
   // NEW: Press Enter to start a brand new game (not same settings)
   const enterNewHandler = (e) => {
-    if (e.key === 'Enter') {
+    // Ignore key repeats and only arm after initial delay to prevent auto-advance
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const armed = !modal.__enterArmTime || now >= modal.__enterArmTime;
+    if (e.key === 'Enter' && !e.repeat && armed) {
       e.preventDefault();
       closeEndGameDialog();
       resetToPreGame();
@@ -866,53 +887,9 @@ function closeEndGameDialog() {
     document.removeEventListener('keydown', modal.__enterNewGame);
     delete modal.__enterNewGame;
   }
-}
-
-// Restart a fresh game using the same players/bonuses; dealer rotates (do not reset currentDealerIdx)
-function restartSameSettings() {
-  if (!players || players.length === 0) {
-    resetToPreGame();
-    return;
+  if (modal && modal.__enterArmTime) {
+    delete modal.__enterArmTime;
   }
-
-  closeEndGameDialog();
-
-  // If previous game did NOT complete all rounds, the current round's dealer hasn't dealt yet.
-  // Undo the auto-advance done in setupRound so the same dealer starts this new game.
-  if (!lastGameCompletedAllRounds && players.length > 0) {
-    currentDealerIdx = (currentDealerIdx - 1 + players.length) % players.length;
-  }
-
-  gameStarted = true;
-  gameOver = false;
-  lastGameCompletedAllRounds = false;
-  scores = {};
-  currentRound = 3;
-  roundsData = [];
-
-  players.forEach(p => { scores[p] = 0; });
-
-  // Clear UI from prior game
-  document.getElementById('scoreTotals').innerHTML = '';
-  document.getElementById('previousRounds').innerHTML = '';
-
-  // Ensure proper visibility/state
-  document.getElementById('preGameConfig')?.classList.add('hidden');
-  document.getElementById('gameArea')?.classList.remove('hidden');
-  document.getElementById('endGameBtn')?.classList.remove('hidden');
-  document.getElementById('currentBonuses')?.classList.remove('hidden');
-
-  const submitBtn = document.getElementById('submitRoundBtn');
-  if (submitBtn) submitBtn.disabled = false;
-
-  // Ensure inputs visible again
-  document.getElementById('scoreInputs')?.classList.remove('hidden');
-
-  // Hide section headers
-  document.getElementById('runningTotalsHeader')?.classList.add('hidden');
-  document.getElementById('previousRoundsHeader')?.classList.add('hidden');
-
-  setupRound();
 }
 
 // On first load, focus players input if in pre-game state (skip if a game was restored)
@@ -940,23 +917,14 @@ function restartSameSettings() {
         return;
       }
     }
-    // Ctrl/Cmd+Shift+Enter -> New Game setup (fresh settings input screen)
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.shiftKey && e.key === 'Enter') {
+    // Ctrl/Cmd+Enter -> New Game setup (fresh settings input screen)
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key === 'Enter') {
       window.QuiddlerHideShortcuts?.();
       e.preventDefault();
       resetToPreGame();
       return;
     }
-    // Ctrl/Cmd+Enter (no shift) -> Restart same settings immediately
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key === 'Enter') {
-      window.QuiddlerHideShortcuts?.();
-      if (gameStarted) {
-        e.preventDefault();
-        restartSameSettings();
-        return;
-      }
-    }
-    // (Removed Ctrl/Cmd+R mapping for restart to free browser reload muscle memory)
+    // Note: Enter alone is handled on the end-game modal to start a new game
   });
 })();
 
