@@ -119,8 +119,10 @@ function initToolsDrawer(){
 
   // ===== Dictionary (async, render <br>) =====
   const dictInput  = document.getElementById('dictInput');
-  const dictGo     = document.getElementById('dictGo');
   const dictEmpty  = document.getElementById('dictEmpty');
+  // Debounce timer so we don't fetch on every keystroke
+  let dictDebounceTimer = null;
+  const DICT_DEBOUNCE_MS = 350;
 
   async function renderDefinition(word) {
     // Show local immediately; then fetch online and replace when available.
@@ -164,10 +166,28 @@ function initToolsDrawer(){
   }
 
   async function doLookup(){ await renderDefinition(dictInput.value); }
-  dictGo.addEventListener('click', doLookup);
+
+  // If an older cached HTML still has the button, keep this safe-guarded listener
+  const dictGo = document.getElementById('dictGo');
+  if (dictGo) dictGo.addEventListener('click', doLookup);
+
+  // Auto-lookup with debounce on input changes
+  dictInput.addEventListener('input', () => {
+    if (dictDebounceTimer) { clearTimeout(dictDebounceTimer); dictDebounceTimer = null; }
+    const val = dictInput.value || '';
+    if (!val.trim()) { renderDefinition(''); return; }
+    dictDebounceTimer = setTimeout(() => { doLookup(); }, DICT_DEBOUNCE_MS);
+  });
+
   dictInput.addEventListener('keydown', async (e)=>{
-    if (e.key === 'Enter') await doLookup();
-    if (e.key === 'Escape') { dictInput.value = ''; renderDefinition(''); }
+    if (e.key === 'Enter') {
+      if (dictDebounceTimer) { clearTimeout(dictDebounceTimer); dictDebounceTimer = null; }
+      await doLookup();
+    }
+    if (e.key === 'Escape') {
+      if (dictDebounceTimer) { clearTimeout(dictDebounceTimer); dictDebounceTimer = null; }
+      dictInput.value = ''; renderDefinition('');
+    }
   });
 
   // ===== Play Helper =====
@@ -249,6 +269,7 @@ function initToolsDrawer(){
       openDrawer();
       showTab('dict');
       dictInput.value = plainWord(word);
+      if (dictDebounceTimer) { clearTimeout(dictDebounceTimer); dictDebounceTimer = null; }
       await renderDefinition(dictInput.value);
       setTimeout(() => { dictInput?.focus(); dictInput?.select?.(); }, 0);
     },
