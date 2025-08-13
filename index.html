@@ -65,11 +65,11 @@
             </div>
 
             <!-- Overall summary -->
-            <h3 class="font-semibold text-xl mt-6">Running Totals</h3>
+            <h3 id="runningTotalsHeader" class="font-semibold text-xl mt-6 hidden">Running Totals</h3>
             <ul id="scoreTotals" class="list-disc pl-6"></ul>
 
             <!-- Round details -->
-            <h3 class="font-semibold text-xl mt-6">Previous Rounds</h3>
+            <h3 id="previousRoundsHeader" class="font-semibold text-xl mt-6 hidden">Previous Rounds</h3>
             <div id="previousRounds" class="mt-2"></div>
         </div>
     </div>
@@ -78,8 +78,8 @@
     <div class="fixed bottom-6 right-6 flex flex-col gap-3 z-50">
       <button id="dictToolBtn"
               class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg"
-              aria-label="Dictionary (⌘/Ctrl+D)"
-              data-tippy-content="Dictionary (⌘/Ctrl+D)"
+              aria-label="Dictionary (⌘/Ctrl+I)"
+              data-tippy-content="Dictionary (⌘/Ctrl+I)"
               type="button">
         <img src="https://cdn.jsdelivr.net/npm/heroicons@2.1.5/24/outline/book-open.svg"
              class="w-7 h-7 invert" alt="" />
@@ -87,8 +87,8 @@
 
       <button id="optToolBtn"
               class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg"
-              aria-label="Solver (⌘/Ctrl+S)"
-              data-tippy-content="Solver (⌘/Ctrl+S)"
+              aria-label="Solver (⌘/Ctrl+O)"
+              data-tippy-content="Solver (⌘/Ctrl+O)"
               type="button">
         <img src="https://cdn.jsdelivr.net/npm/heroicons@2.1.5/24/outline/cog-6-tooth.svg"
              class="w-7 h-7 invert" alt="" />
@@ -229,6 +229,31 @@
       </div>
     </div>
 
+    <!-- Keyboard Shortcuts Modal -->
+    <div id="shortcutModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
+      <div class="bg-white rounded-lg shadow-lg p-5 w-[420px] text-sm">
+        <h3 class="font-semibold mb-3">Keyboard Shortcuts</h3>
+        <ul class="space-y-1 leading-5">
+          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + I</span> Open dictionary</li>
+          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + O</span> Open solver</li>
+          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + E</span> End game</li>
+          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + Enter</span> Restart same settings</li>
+          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + Shift + Enter</span> New game setup</li>
+          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Enter (on summary)</span> New game setup</li>
+          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">?/Ctrl/Cmd + /</span> Toggle this panel</li>
+        </ul>
+        <div class="mt-4 text-right">
+          <button id="shortcutCloseBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded text-xs">Close (Esc)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Subtle footer hint -->
+    <div class="mt-6 text-center text-[11px] text-gray-400 select-none">
+      Press <span class="font-mono">Cmd+/</span> (Ctrl+/) for shortcuts
+      <button onclick="window.QuiddlerToggleShortcuts?.()" class="ml-2 underline decoration-dotted">help</button>
+    </div>
+
     <!-- Core data and helpers -->
     <script src="card_scores.js"></script>
     <script src="collins_dictionary.js"></script>
@@ -276,6 +301,29 @@
       document.getElementById('endModalNewBtn')?.addEventListener('click', () => {
         (window.QuiddlerGame?.closeEndGameDialog)?.();
         (window.QuiddlerGame?.resetToPreGame)?.();
+      });
+
+      // Shortcut modal toggle
+      function toggleShortcutModal() {
+        const modal = document.getElementById('shortcutModal');
+        const isHidden = modal.classList.contains('hidden');
+        modal.classList.toggle('hidden', !isHidden);
+        modal.classList.toggle('flex', isHidden);
+        if (isHidden) {
+          modal.focus();
+        }
+      }
+
+      // Global keydown listener for shortcuts
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          // Close modals on Escape
+          document.getElementById('shortcutModal').classList.add('hidden');
+        } else if (e.key === '?' && !document.getElementById('shortcutModal').classList.contains('hidden')) {
+          // Toggle shortcut modal with ?
+          e.preventDefault();
+          toggleShortcutModal();
+        }
       });
 
       // Ensure initial focus sticks on pre-game players input

@@ -49,11 +49,13 @@ function initToolsDrawer(){
 
   // Launchers
   document.getElementById('dictToolBtn')?.addEventListener('click', () => {
+    window.QuiddlerHideShortcuts?.(); // hide shortcuts popup if open
     openDrawer();
     showTab('dict');
     setTimeout(() => document.getElementById('dictInput')?.focus(), 0);
   });
   document.getElementById('optToolBtn')?.addEventListener('click', () => {
+    window.QuiddlerHideShortcuts?.(); // hide shortcuts popup if open
     openDrawer();
     showTab('play');
     setTimeout(() => document.getElementById('tilesInput')?.focus(), 0);
@@ -69,14 +71,14 @@ function initToolsDrawer(){
     const isAccel = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey;
     if (!isAccel) return;
     const k = (e.key || '').toLowerCase();
-    if (k === 'd') {
-      // Open Dictionary
+    if (k === 'i') { // Dictionary (was D)
+      window.QuiddlerHideShortcuts?.();
       e.preventDefault();
       openDrawer();
       showTab('dict');
       setTimeout(() => document.getElementById('dictInput')?.focus(), 0);
-    } else if (k === 's') {
-      // Open Solver (Play Helper)
+    } else if (k === 'o') { // Solver (was S)
+      window.QuiddlerHideShortcuts?.();
       e.preventDefault();
       openDrawer();
       showTab('play');

@@ -144,7 +144,6 @@ function loadGameState() {
     document.getElementById('gameArea')?.classList.remove('hidden');
     document.getElementById('currentBonuses')?.classList.remove('hidden');
     document.getElementById('endGameBtn')?.classList.remove('hidden');
-    const goBtn = document.getElementById('gameGo'); if (goBtn) goBtn.textContent = 'Restart Game';
 
     // Recompute (ensures scores and bonuses re-derived if logic changed)
     recalculateScores();
@@ -161,6 +160,10 @@ function loadGameState() {
       // Rebuild current round input fields (next round to be played)
       setupRound();
     }
+    // Ensure headers visibility on restored game
+    const hasRounds = roundsData.length > 0;
+    document.getElementById('runningTotalsHeader')?.classList.toggle('hidden', !hasRounds);
+    document.getElementById('previousRoundsHeader')?.classList.toggle('hidden', !hasRounds);
   } catch (e) {
     console.warn('Persist load failed', e);
   } finally {
@@ -229,6 +232,9 @@ function startGame() {
   document.getElementById('scoreInputs')?.classList.remove('hidden');
 
   document.getElementById('gameGo').textContent = 'Restart Game';
+  // Hide section headers until a first round exists
+  document.getElementById('runningTotalsHeader')?.classList.add('hidden');
+  document.getElementById('previousRoundsHeader')?.classList.add('hidden');
   setupRound();
   saveGameState();
 }
@@ -625,6 +631,10 @@ document.getElementById('mostWordsBonus')?.addEventListener('change', updateBonu
  * Render the previous rounds list and wire tooltip/dictionary handlers.
  */
 function updatePreviousRounds() {
+  const hasRounds = roundsData.length > 0;
+  document.getElementById('runningTotalsHeader')?.classList.toggle('hidden', !hasRounds);
+  document.getElementById('previousRoundsHeader')?.classList.toggle('hidden', !hasRounds);
+
   const html = roundsData
     .slice()
     .reverse()
@@ -779,6 +789,10 @@ function resetToPreGame() {
   const submitBtn = document.getElementById('submitRoundBtn');
   if (submitBtn) submitBtn.disabled = false;
 
+  // Hide section headers
+  document.getElementById('runningTotalsHeader')?.classList.add('hidden');
+  document.getElementById('previousRoundsHeader')?.classList.add('hidden');
+
   try { localStorage.removeItem(Q_STORAGE_KEY); } catch {}
 }
 
@@ -894,6 +908,10 @@ function restartSameSettings() {
   // Ensure inputs visible again
   document.getElementById('scoreInputs')?.classList.remove('hidden');
 
+  // Hide section headers
+  document.getElementById('runningTotalsHeader')?.classList.add('hidden');
+  document.getElementById('previousRoundsHeader')?.classList.add('hidden');
+
   setupRound();
 }
 
@@ -915,25 +933,62 @@ function restartSameSettings() {
   document.addEventListener('keydown', (e) => {
     // Ctrl/Cmd+E -> End Game (only if a game is in progress and not already over)
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+      window.QuiddlerHideShortcuts?.();
       if (gameStarted && !gameOver) {
         e.preventDefault();
         endGame(false);
         return;
       }
     }
-    // Ctrl/Cmd+R -> Restart same settings immediately (avoids browser reload)
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'r' || e.key === 'R')) {
+    // Ctrl/Cmd+Shift+Enter -> New Game setup (fresh settings input screen)
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.shiftKey && e.key === 'Enter') {
+      window.QuiddlerHideShortcuts?.();
+      e.preventDefault();
+      resetToPreGame();
+      return;
+    }
+    // Ctrl/Cmd+Enter (no shift) -> Restart same settings immediately
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key === 'Enter') {
+      window.QuiddlerHideShortcuts?.();
       if (gameStarted) {
         e.preventDefault();
         restartSameSettings();
         return;
       }
     }
-    // Ctrl/Cmd+Shift+Enter -> New Game (fresh settings input screen)
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.shiftKey && e.key === 'Enter') {
+    // (Removed Ctrl/Cmd+R mapping for restart to free browser reload muscle memory)
+  });
+})();
+
+// Shortcut modal helpers
+(function(){
+  function toggleShortcutModal(force) {
+    const modal = document.getElementById('shortcutModal');
+    if (!modal) return;
+    const show = (force === true) || (force == null && modal.classList.contains('hidden'));
+    modal.classList.toggle('hidden', !show);
+    modal.classList.toggle('flex', show);
+  }
+  function hideShortcutModal(){
+    const modal = document.getElementById('shortcutModal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+  // Expose globally for footer click and for other shortcuts to auto-hide
+  if (typeof window !== 'undefined') {
+    window.QuiddlerToggleShortcuts = toggleShortcutModal;
+    window.QuiddlerHideShortcuts = hideShortcutModal;
+  }
+
+  function globalShortcutHelpHandler(e){
+    // Cmd/Ctrl + / opens/closes shortcuts
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === '/' || e.key === '?')) {
       e.preventDefault();
-      resetToPreGame();
+      toggleShortcutModal();
       return;
     }
-  });
+    if (e.key === 'Escape') hideShortcutModal();
+  }
+  document.addEventListener('keydown', globalShortcutHelpHandler);
 })();
