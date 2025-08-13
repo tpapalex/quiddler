@@ -6,6 +6,11 @@
   - parseCards: split a text word into card tokens, handling digraphs like (qu)
   - calculateScore: sum points for a list of tokens using card_scores.js
   - toCardToken / pointsArrayFor / breakdownStr: UI helpers for rendering
+
+  Conventions:
+  - Input words may include parentheses to indicate digraph tiles (e.g., (qu)).
+  - A leading '-' denotes unused/penalty chits. Callers strip '-' before parsing.
+  - cardScores (from card_scores.js) is the single source of truth for tile points.
 */
 
 // Parse input into card tokens, recognizing digraphs wrapped in parentheses

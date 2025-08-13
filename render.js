@@ -1,5 +1,20 @@
+// render.js — UI rendering helpers for rounds, rows, and chits
+// Responsibilities:
+// - renderChit: visual for a word/chit with score, color by state, optional def icon
+// - renderPlayerRow/Header/Controls: per-player row with inline edit and play helper gear
+// - renderRound: compose a round block from per-player rows
+// - initChitTooltips: wire up tippy tooltips for breakdowns and def icons
+// - renderOptimizedPlayFromResult: present solver output as chits and score summary
+// Notes:
+// - Word state colors: neutral=gray, valid=green, invalid=red
+// - The def-open icon triggers the dictionary drawer; breakdown tooltips are suppressed while hovering def icons
+
 // HTML for a single chit (reusable for rounds or optimizer)
 function renderChit(word, opts = {}) {
+  // opts: { roundIdx, player, wordIdx, interactive, showDefIcon, showBreakdown, forceState, forceShowDefIcon, extraClasses }
+  // - interactive adds data-action for challenge toggle
+  // - showDefIcon is auto-enabled for valid words unless forceShowDefIcon is true
+  // - showBreakdown enables tooltip built from scoring.breakdownStr
   const {
     roundIdx = null,
     player = null,
@@ -56,6 +71,7 @@ function renderChit(word, opts = {}) {
 
 // Row header segments
 function renderPlayerRowHeader(player, pdata) {
+  // Displays: player name | roundScore | inline breakdown (base - deductions + bonuses)
   const parts = [];
   parts.push(Math.max(pdata.baseScore, 0));
   if (pdata.challengeDeductions) parts.push(`- ${pdata.challengeDeductions}`);
@@ -75,6 +91,7 @@ function renderPlayerRowHeader(player, pdata) {
 
 // Interactive controls (edit + gear). Call only when interactive=true
 function renderRowControls(roundIdx, player) {
+  // Edit toggles inline text editing; gear pre-fills Play Helper with current row
   return `
     <span class="w-10 shrink-0 flex items-center gap-1 justify-start">
       <button data-action="edit" data-player="${player}" data-round="${roundIdx}"
@@ -88,6 +105,7 @@ function renderRowControls(roundIdx, player) {
 
 // Render one player's row (interactive or static)
 function renderPlayerRow(roundIdx, player, pdata, {interactive = true} = {}) {
+  // Builds header, optional controls, list of chits and hidden edit block
   const header = renderPlayerRowHeader(player, pdata);
   const controls = interactive ? renderRowControls(roundIdx, player) : '';
 
@@ -122,6 +140,7 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true} = {}) {
 
 // Render a whole round block (interactive or static)
 function renderRound(round, roundIdx, {interactive = true} = {}) {
+  // Maps current global players order to rows for this round
   const playerList = (window.QuiddlerGame?.players)
     ? window.QuiddlerGame.players
     : (typeof players !== 'undefined' ? players : []);
@@ -143,6 +162,9 @@ function renderRound(round, roundIdx, {interactive = true} = {}) {
 window.__defOpenHover = false;
 
 function initChitTooltips(container = document) {
+  // Two tippy groups:
+  // - breakdownInstances on .breakdown-tip show letter-by-letter points
+  // - defInstances on .def-open indicate dictionary action; they suppress breakdown tooltips while active
   const breakdownInstances = tippy(container.querySelectorAll('.breakdown-tip'), {
     delay: [100, 50],
     animation: 'scale',
@@ -173,6 +195,10 @@ function initChitTooltips(container = document) {
 }
 
 function renderOptimizedPlayFromResult(containerId, result) {
+  // Renders solver result as chits:
+  // - words[] as neutral chits with forced def icons
+  // - unusedTiles collapsed into a single invalid '-' chit
+  // - discardTile shown as a yellow neutral '-' chit (informational)
   const el = document.getElementById(containerId);
   if (!el) return;
 

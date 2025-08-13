@@ -1,9 +1,38 @@
 'use strict';
 
 /*
-  Game flow and scoring logic for Quiddler.
-  - Manages players, rounds, per-round word entries, challenges, and running totals.
-  - Exposes startGame, nextRound, and UI helpers used by index.html buttons.
+  game.js — Game flow and scoring logic for Quiddler
+
+  State:
+  - players: ordered array of player names; dealer rotates each round
+  - roundsData: array of round objects; each round keeps per-player chit objects
+    round = {
+      roundNum: number,
+      players: {
+        [playerName]: Array<{
+          text: string,         // raw chit text, e.g. (qu)ick or -e(th)
+          score: number,        // computed from scoring.calculateScore(parseCards(...))
+          state: 'neutral'|'valid'|'invalid', // result of challenge resolution
+          challenger: string|null // who challenged this word (or null for GOD/unassigned)
+        }> & bookkeeping fields set during recalc:
+        baseScore: number,
+        challengeDeductions: number,
+        bonus: number,
+        gotLongestBonus: boolean,
+        gotMostWordsBonus: boolean,
+        roundScore: number
+      }
+    }
+
+  Rules encoded here:
+  - Words prefixed with '-' are unused/penalty chits and never get challenged or definition lookups.
+  - A word contributes to base score if:
+    • state !== 'invalid', OR
+    • state === 'invalid' but has no challenger (definition-only check or unchallenged)
+  - Challenge deductions:
+    • If a VALID word is challenged, challenger pays the word's points.
+    • If an INVALID word is challenged, owner pays the word's points.
+  - Bonuses (if enabled via UI): strictly single-winner for longest word length and most words.
 */
 
 let gameStarted = false;
@@ -330,6 +359,9 @@ function updateScores() {
 
 /**
  * Toggle a word's challenge state and assign a challenger via a dropdown.
+ * Flow:
+ * - Click cycles from neutral → choose challenger → valid/invalid based on dictionary → neutral.
+ * - 'GOD' selection marks a challenged resolution without attributing deductions to another player.
  */
 function toggleChallenge(btn, e) {
   e.stopPropagation();
@@ -377,6 +409,7 @@ function toggleChallenge(btn, e) {
 }
 
 // Players input affects default bonuses
+// - 1 player: no bonuses; 2 players: longest only; 3+: both bonuses
 document.getElementById('playersInput')?.addEventListener('input', function() {
   const playersList = this.value
     .split(',')
@@ -478,6 +511,7 @@ function updatePreviousRounds() {
 }
 
 // Expose selected game APIs under a namespace (keep globals intact for existing calls)
+// + Provide read-only snapshots for introspection and debugging.
 if (typeof window !== 'undefined') {
   const ns = Object.assign({}, window.QuiddlerGame || {}, {
     startGame,

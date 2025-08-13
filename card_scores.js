@@ -1,3 +1,12 @@
+// Quiddler card point values.
+// - Keys are case-insensitive single letters or multi-letter digraph tiles.
+// - Values are the points each tile contributes to a word's score.
+// - This is the single source of truth for scoring across the app (scoring.js, render.js, optimizer.js).
+//
+// Notes:
+// - Digraphs are special tiles consisting of 2 letters that must be used as a unit in play, e.g., "qu", "th".
+// - In UI text, digraphs are represented by wrapping in parentheses, e.g., (qu). See scoring.parseCards and UI helpers.
+// - The DIGRAPHS Set below is derived from these keys and is used by the solver when counting rack tiles.
 const cardScores = {
     'a':2,
     'b':8,
@@ -25,7 +34,7 @@ const cardScores = {
     'x':12,
     'y':4,
     'z':14,
-    //digraphs
+    // Digraph tiles (two-letter cards used as a single unit)
     'cl':10,
     'er':7,
     'in':7,
@@ -33,4 +42,13 @@ const cardScores = {
     'th':9,
 };
 
+// Convenience: set of all digraph tile keys derived from cardScores.
+// Used by:
+// - optimizer.countRack: to split a rack into singles vs. digraph counts.
+// - scoring.parseCards + render helpers: to display digraphs as (qu), etc.
 const DIGRAPHS = new Set(Object.keys(cardScores).filter(w => w.length > 1));
+
+// Expose for debugging/inspection in the browser console
+if (typeof window !== 'undefined') {
+  window.QuiddlerData = Object.assign({}, window.QuiddlerData || {}, { cardScores, DIGRAPHS });
+}

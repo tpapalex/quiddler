@@ -1,5 +1,20 @@
+// Quiddler best-play solver
+// Pipeline overview:
+// 1) buildTrie: builds a prefix trie from validWordsMap (depth limited by maxRound)
+// 2) countRack: splits tiles into single letters vs. digraph tile counts
+// 3) makeCommonGateFromEntries: makes a frequency-based filter from common_lemmas.js entries
+// 4) generateWordCandidates: DFS over trie using available rack counts to produce scored candidates
+//    - Keeps distinct usages per plain word (different digraph/single compositions)
+//    - Rejects words that are a single digraph tile (e.g., "qu")
+// 5) chooseBestPlay: branch-and-bound search selecting a set of non-overlapping candidates
+//    - Computes leftover penalty; supports optional discard of a single highest-value tile
+//    - Applies strict bonuses vs. currentLongest/currentMost thresholds
+// 6) optimize: orchestrates, wires to UI params, and returns a summary for rendering
+
 // ---------- Build trie ----------
 function buildTrie(words, maxDepth = 10) {
+  // Insert each word up to maxDepth; mark node.end for words whose full length <= maxDepth.
+  // This lets DFS stop early while still recognizing completes within the search horizon.
   const root = { children: Object.create(null), end: false };
   for (const wRaw of words) {
     const w = wRaw.toLowerCase();
@@ -17,6 +32,7 @@ function buildTrie(words, maxDepth = 10) {
 // Global, lazily-initialized trie built from validWordsMap
 let validWordTrie = (typeof window !== 'undefined' && window.validWordTrie) ? window.validWordTrie : null;
 function getValidWordTrie() {
+  // Create once, reuse across optimize() calls. Depth tied to maxRound so longer paths are pruned.
   if (!validWordTrie) {
     const words = (typeof validWordsMap !== 'undefined') ? Object.keys(validWordsMap) : [];
     const depth = (typeof maxRound === 'number') ? maxRound : 10;
@@ -28,6 +44,7 @@ function getValidWordTrie() {
 
 // ---------- Count rack ----------
 function countRack(tiles, digraphSet) {
+  // Separate inventory into singles vs. digraphs; used by candidate DFS and leftover accounting.
   const singleCounts = Object.create(null);
   const digraphCounts = Object.create(null);
   for (const raw of tiles) {
@@ -44,6 +61,10 @@ function makeCommonGateFromEntries(
   { mode = 'zipf', minZipF = 3.8, topK = 10000, override2and3 = false } = {},
   lemmatizer
 ) {
+  // entries: array of [lemma, zipfScore, rank]
+  // - mode zipf/rank/either/both controls acceptance
+  // - override2and3: allow any 2–3 letter words regardless of frequency
+  // - lemmatizer: optional wink-lemmatizer to map inflected forms to base lemma
   const MAP = new Map(entries.map(([l, z, r]) => [l, { zipf: z, rank: r }]));
 
   function lemma(word) {
@@ -73,6 +94,10 @@ function makeCommonGateFromEntries(
 
 // ---------- Generate candidates (keep all distinct usages) ----------
 function generateWordCandidates(trie, rackCounts, minLen = 2, opts = {}) {
+  // DFS walks trie using available counts. Each path maintains:
+  // - path: letters for trie traversal
+  // - usedTokens: actual tiles used (singles or digraphs) to compute score/usage
+  // De-duplication is per plain word by usage signature so (qu)a vs. q(u)a remain distinct if tiles differ.
   const { commonGate = null } = opts;
 
   const out = [];
@@ -147,6 +172,9 @@ function generateWordCandidates(trie, rackCounts, minLen = 2, opts = {}) {
 
 // ---------- Choose best play (no-flatten discard, leftover penalty, strict bonuses) ----------
 function chooseBestPlay(candidates, rackCounts, params = {}) {
+  // Greedy sort for heuristic ordering; search is exhaustive with a pruning upper bound (ub).
+  // leftover penalty: sum(points of unused tiles) minus best discard if allowed.
+  // bonuses apply only if strictly exceeding opponents' currentLongest/currentMost thresholds.
   const {
     currentLongest = Infinity,
     currentMost    = Infinity,
@@ -318,6 +346,12 @@ function chooseBestPlay(candidates, rackCounts, params = {}) {
 }
 
 function optimize(params) {
+  // Params from UI:
+  // - tiles: rack string like "(qu)a(th)i"; parser handles parentheses
+  // - noDiscard: if true, cannot discard one leftover tile; all leftovers penalize
+  // - commonOnly + minZipF + override2and3: frequency filter using common_lemmas.js (window.wordFreq)
+  // - currentLongest/currentMost: thresholds to beat for bonuses (strictly greater)
+  // Returns: bestplay summary consumed by render.renderOptimizedPlayFromResult
   const {
     tiles = '',
     noDiscard = false,
@@ -357,15 +391,8 @@ function optimize(params) {
 }
 
 if (typeof window !== 'undefined') {
-  // Namespace for clarity
+  // Namespace exports used by tools_drawer and debug consoles.
   window.QuiddlerSolver = Object.assign({}, window.QuiddlerSolver || {}, {
-    buildTrie,
-    // expose the trie and accessor for convenience
-    validWordTrie: () => getValidWordTrie(),
-    countRack,
-    makeCommonGateFromEntries,
-    generateWordCandidates,
-    chooseBestPlay,
     optimize,
   });
 }

@@ -1,5 +1,16 @@
 'use strict';
 
+// dictionary_api.js
+// Helpers to look up definitions for a word:
+// - getWordDefinitionLocal(word): case-insensitive lookup from collins_dictionary.js (validWordsMap)
+// - getWordDefinitionAPI(word): fetch from Free Dictionary API and format senses with <br>
+// - getWordDefinition(word): try API first, then fall back to local; returns a human-readable string
+//
+// Notes:
+// - Returned strings may contain HTML <br> tags for multiple senses (rendered directly in UI).
+// - A simple AbortController timeout prevents long-hanging network requests.
+// - Callers should pass raw chit text; helper strips parentheses and whitespace.
+
 // Local lookup (case-insensitive via UPPER)
 function getWordDefinitionLocal(word) {
   return validWordsMap[String(word || '').toUpperCase()] ?? null;

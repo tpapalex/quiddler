@@ -1,21 +1,32 @@
+// tools_drawer.js — Right-side tools drawer (Dictionary + Solver)
+// Responsibilities:
+// - Manage drawer open/close with backdrop and ESC
+// - Switch between Dictionary and Play Helper tabs
+// - Dictionary: render local definition immediately, fetch online definition async
+// - Play Helper: gather options and call QuiddlerSolver.optimize, then render via QuiddlerRender
+// - Expose a small API on window.QuiddlerTools for other modules
+
 function initToolsDrawer(){
   const drawer   = document.getElementById('toolsDrawer');
   const closeBtn = document.getElementById('toolsCloseBtn');
   const backdrop = document.getElementById('toolsBackdrop');
 
   function openDrawer() {
+    // Slide in drawer and fade in backdrop
     drawer.classList.remove('translate-x-full');
     backdrop.classList.remove('hidden');
     void backdrop.offsetWidth; // force reflow for transition
     backdrop.classList.remove('opacity-0');
   }
   function closeDrawer() {
+    // Slide out drawer and fade out backdrop
     drawer.classList.add('translate-x-full');
     backdrop.classList.add('opacity-0');
     const onEnd = () => { backdrop.classList.add('hidden'); backdrop.removeEventListener('transitionend', onEnd); };
     backdrop.addEventListener('transitionend', onEnd);
   }
 
+  // Launchers
   document.getElementById('dictToolBtn')?.addEventListener('click', () => {
     openDrawer();
     showTab('dict');
@@ -57,6 +68,7 @@ function initToolsDrawer(){
   const dictEmpty  = document.getElementById('dictEmpty');
 
   async function renderDefinition(word) {
+    // Show local immediately; then fetch online and replace when available.
     const localWrap  = document.getElementById('dictLocalWrap');
     const localEl    = document.getElementById('dictLocal');
     const onlineWrap = document.getElementById('dictOnlineWrap');
@@ -117,6 +129,7 @@ function initToolsDrawer(){
   const playResult        = document.getElementById('playResult');
 
   function updateCommonOptions() {
+    // Enable/disable frequency controls as a group
     const enabled = optCommonOnly.checked;
     optCommonOverride.disabled = !enabled;
     optZipf.disabled = !enabled;
@@ -135,6 +148,7 @@ function initToolsDrawer(){
   playGo.addEventListener('click', onFindBestPlay);
 
   async function onFindBestPlay() {
+    // Normalize inputs, then call the solver and render results
     const tiles = tilesInput.value.trim().replace(/[, -]+/g, '');
     const noDiscard      = !!optNoDiscard.checked;
     const commonOnly     = !!optCommonOnly.checked;
@@ -182,6 +196,7 @@ function initToolsDrawer(){
       showTab('play');
     },
     prefillPlay: ({ tiles, currentLongest, currentMost }) => {
+      // Pre-populate Play Helper with a row's tiles and current opponent thresholds.
       openDrawer(); showTab('play');
       const tilesInput = document.getElementById('tilesInput');
       const optNoDiscard = document.getElementById('optNoDiscard');
