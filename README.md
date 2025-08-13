@@ -1,6 +1,6 @@
 # Quiddler Scoring App
 
-A lightweight, browser-based helper for running and scoring [Quiddler](https://en.wikipedia.org/wiki/Quiddler) games, available at tpapalex.github.io/quiddler.
+A lightweight, browser-based helper for running and scoring [Quiddler](https://en.wikipedia.org/wiki/Quiddler) games, available at [tpapalex.github.io/quiddler](tpapalex.github.io/quiddler).
 
 ## Highlights
 - Track any number of players across 10 rounds with dealer rotation
