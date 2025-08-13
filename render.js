@@ -90,31 +90,116 @@ function renderPlayerRowHeader(player, pdata) {
 }
 
 // Interactive controls (edit + gear). Call only when interactive=true
-function renderRowControls(roundIdx, player) {
+function renderRowControls(roundIdx, player, extraRightHTML = '') {
   // Edit toggles inline text editing; gear pre-fills Play Helper with current row
   return `
-    <span class="controls-cell flex-none flex items-center justify-start w-full">
-      <span class="controls-view-mode inline-flex items-center gap-1 w-full">
-        <button data-action="edit" data-player="${player}" data-round="${roundIdx}"
-                class="opacity-100 sm:opacity-0 group-hover:opacity-100 transition">✏️</button>
-        <button data-action="prefill-play" data-player="${player}" data-round="${roundIdx}"
-                class="opacity-100 sm:opacity-0 group-hover:opacity-100 transition text-emerald-700 hover:text-emerald-900"
-                title="Open Play Helper">⚙️</button>
+    <span class="controls-cell flex items-center w-full">
+      <span class="flex items-center gap-1 flex-auto">
+        <span class="controls-view-mode inline-flex items-center gap-1">
+          <button data-action="edit" data-player="${player}" data-round="${roundIdx}"
+                  class="opacity-100 sm:opacity-0 group-hover:opacity-100 transition">✏️</button>
+          <button data-action="prefill-play" data-player="${player}" data-round="${roundIdx}"
+                  class="opacity-100 sm:opacity-0 group-hover:opacity-100 transition text-emerald-700 hover:text-emerald-900"
+                  title="Open Play Helper">⚙️</button>
+        </span>
+        <span class="controls-edit-mode hidden inline-flex items-center gap-1">
+          <button data-action="save-edit" data-player="${player}" data-round="${roundIdx}"
+                  class="opacity-100 transition" title="Save">✔️</button>
+          <button data-action="cancel-edit" class="opacity-100 transition" title="Cancel">❌</button>
+        </span>
       </span>
-      <span class="controls-edit-mode hidden inline-flex items-center gap-1 w-full">
-        <button data-action="save-edit" data-player="${player}" data-round="${roundIdx}"
-                class="opacity-100 transition" title="Save">✔️</button>
-        <button data-action="cancel-edit" class="opacity-100 transition" title="Cancel">❌</button>
-      </span>
+      <span class="flex-none ml-1">${extraRightHTML}</span>
     </span>
   `;
 }
 
+// ---------- Row validation (subtle) ----------
+function buildRowValidationIssues(pdata, expectedCards) {
+  try {
+    const cards = window.QuiddlerData?.cardScores || (typeof cardScores !== 'undefined' ? cardScores : {});
+
+    let recognizedCount = 0;      // tokens matched by the parser
+    let unknownDeck = [];         // matched tokens not in deck (normalized)
+    let unmatchedFragments = [];  // characters/spans the parser could not consume (incl. midword '-')
+
+    (pdata || []).forEach(w => {
+      const txt = String(w?.text || '');
+      const core = txt.startsWith('-') ? txt.slice(1) : txt;
+
+      // Scan core, capturing matched tokens and gaps that are not parsed
+      const re = /\([a-z]+\)|[a-z]/gi;
+      let m;
+      let idx = 0;
+      const matchedTokens = [];
+      while ((m = re.exec(core)) !== null) {
+        const gap = core.slice(idx, m.index);
+        if (gap.length) {
+          // record raw gap segments split by whitespace; keep punctuation like '-' as its own token
+          gap.split(/\s+/).forEach(seg => { if (seg) unmatchedFragments.push(seg); });
+        }
+        matchedTokens.push(m[0]);
+        idx = m.index + m[0].length;
+      }
+      const tail = core.slice(idx);
+      if (tail.length) {
+        tail.split(/\s+/).forEach(seg => { if (seg) unmatchedFragments.push(seg); });
+      }
+
+      // Tally recognized tokens and unknown deck items
+      recognizedCount += matchedTokens.length;
+      matchedTokens.forEach(t => {
+        const norm = normalizeToken(t);
+        if (!(norm in cards)) unknownDeck.push(norm);
+      });
+    });
+
+    // Compute total found as recognized tokens plus unmatched fragments
+    const foundCount = recognizedCount + unmatchedFragments.length;
+
+    const issues = [];
+
+    // Combine all invalid items under one line
+    const invalidItems = Array.from(new Set([
+      // display tokens for unknown deck items
+      ...unknownDeck.map(toCardToken),
+      // raw unmatched fragments
+      ...unmatchedFragments
+    ]));
+    if (invalidItems.length) {
+      issues.push(`Invalid cards: ${invalidItems.join(', ')}`);
+    }
+
+    // Short card count message only when mismatched
+    if (Number.isFinite(expectedCards) && expectedCards > 0 && foundCount !== expectedCards) {
+      issues.push(`Cards: ${foundCount}`);
+    }
+
+    return issues;
+  } catch (e) {
+    return [];
+  }
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 // Render one player's row (interactive or static)
-function renderPlayerRow(roundIdx, player, pdata, {interactive = true} = {}) {
+function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedCards = null} = {}) {
   // Builds header, optional controls, list of chits and hidden edit block
   const header = renderPlayerRowHeader(player, pdata);
-  const controls = interactive ? renderRowControls(roundIdx, player) : '';
+
+  const issues = buildRowValidationIssues(pdata, expectedCards);
+  const tooltipHTML = issues.length ? issues.map(escapeHtml).join('<br/>') : '';
+  const valHTML = issues.length
+    ? `<span class="text-red-600 text-xs cursor-help row-val-flag" data-tippy-content="${tooltipHTML}" title="">🚩</span>`
+    : '';
+
+  const controls = interactive ? renderRowControls(roundIdx, player, valHTML) : '';
 
   const chits = pdata.map((word, i) =>
     renderChit(word, { roundIdx, player, wordIdx: i, interactive, showDefIcon: true })
@@ -130,12 +215,12 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true} = {}) {
   ` : '';
 
   return `
-    <div class="relative group items-start gap-2 flex flex-wrap sm:grid sm:items-baseline sm:grid-cols-[8ch_4ch_11ch_2.5rem_1fr]">
-      <div class="grid grid-cols-[7ch_4ch_minmax(0,1fr)_2.5rem] items-baseline gap-2 w-full sm:contents">
+    <div class="relative group items-start gap-2 flex flex-wrap sm:grid sm:items-baseline sm:grid-cols-[8ch_4ch_11ch_3rem_1fr]">
+      <div class="grid grid-cols-[7ch_4ch_minmax(0,1fr)_3rem] items-baseline gap-2 w-full sm:contents">
         ${header}
         ${controls}
       </div>
-      <div class="row-chits-cell min-w-0 flex-1 basis-full sm:basis-auto">
+      <div class="row-chits-cell min-w-0 flex-1 basis-full sm:basis-auto sm:mt-1">
         <div class="chit-container flex flex-wrap gap-1">
           ${chits}
         </div>
@@ -153,7 +238,7 @@ function renderRound(round, roundIdx, {interactive = true} = {}) {
     : (typeof players !== 'undefined' ? players : []);
 
   const rows = playerList
-    .map(player => renderPlayerRow(roundIdx, player, round.players[player], {interactive}))
+    .map(player => renderPlayerRow(roundIdx, player, round.players[player], {interactive, expectedCards: round.roundNum}))
     .join('');
   return `
     <div class="my-4 flex gap-4 border-b border-gray-200 pb-4">
@@ -170,7 +255,7 @@ window.__defOpenHover = false;
 
 function initChitTooltips(container = document) {
   if (typeof window === 'undefined' || !window.tippy) {
-    return { breakdownInstances: [], defInstances: [] };
+    return { breakdownInstances: [], defInstances: [], valInstances: [] };
   }
   // Two tippy groups:
   // - breakdownInstances on .breakdown-tip show letter-by-letter points
@@ -201,7 +286,14 @@ function initChitTooltips(container = document) {
     }
   });
 
-  return { breakdownInstances, defInstances };
+  const valInstances = tippy(container.querySelectorAll('.row-val-flag'), {
+    delay: [100, 50],
+    animation: 'scale',
+    allowHTML: true,
+    placement: 'top'
+  });
+
+  return { breakdownInstances, defInstances, valInstances };
 }
 
 function renderOptimizedPlayFromResult(containerId, result) {
@@ -252,7 +344,7 @@ function renderOptimizedPlayFromResult(containerId, result) {
     );
   }
 
-  const base     = Number(result.baseScore ?? 0);
+  const base = Number(result.baseScore ?? 0);
   const leftover = Number(result.leftoverValue ?? 0);
   const baseShown = Math.max(base - leftover, 0);
 
