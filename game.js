@@ -39,7 +39,8 @@ let gameStarted = false;
 let players = [];
 let scores = {};
 let currentRound = 3;
-const maxRound = 10;
+let startCards = 3;              // NEW: configurable starting hand size
+let maxRound = 10;               // (was const) now configurable ending hand size
 let roundsData = [];
 let longestWordBonus = false;
 let mostWordsBonus = false;
@@ -75,7 +76,9 @@ function serializeGameState() {
     longestWordPoints,
     mostWordsPoints,
     gameOver,
-    lastGameCompletedAllRounds
+    lastGameCompletedAllRounds,
+    startCards,            // NEW
+    maxRound               // NEW (endCards)
   };
 }
 function saveGameState() {
@@ -111,6 +114,9 @@ function loadGameState() {
       }))]))
     }));
     currentRound = data.currentRound || 3;
+    // NEW: load configurable ranges (fallback to legacy defaults)
+    startCards = +data.startCards || 3;
+    maxRound = +data.maxRound || 10;
     currentDealerIdx = data.currentDealerIdx || 0;
     longestWordBonus = !!data.longestWordBonus;
     mostWordsBonus = !!data.mostWordsBonus;
@@ -139,6 +145,11 @@ function loadGameState() {
     const mPts = document.getElementById('mostWordsPoints');
     if (lPts) { lPts.value = longestWordPoints; lPts.disabled = true; }
     if (mPts) { mPts.value = mostWordsPoints; mPts.disabled = true; }
+    // NEW: reflect start/end card inputs
+    const sc = document.getElementById('startCards');
+    const ec = document.getElementById('endCards');
+    if (sc) { sc.value = startCards; sc.disabled = true; }
+    if (ec) { ec.value = maxRound; ec.disabled = true; }
 
     document.getElementById('preGameConfig')?.classList.add('hidden');
     document.getElementById('gameArea')?.classList.remove('hidden');
@@ -195,11 +206,29 @@ function startGame() {
     return;
   }
 
-  // Reset all global variables to initial state
+  // Read configurable card range first (validate before committing to game start)
+  const rawStart = +(document.getElementById('startCards')?.value || 3);
+  const rawEnd = +(document.getElementById('endCards')?.value || 10);
+  if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) {
+    alert('Please enter numeric values for start/end cards.');
+    return;
+  }
+  if (rawStart < 3) {
+    alert('Starting number of cards must be at least 3.');
+    return;
+  }
+  if (rawStart > rawEnd) {
+    alert('Starting number of cards cannot be greater than ending number of cards.');
+    return;
+  }
+  startCards = rawStart;
+  maxRound = rawEnd;
+
+  // Reset all global variables to initial state (after validation)
   gameStarted = true;
   gameOver = false;
   scores = {};
-  currentRound = 3;
+  currentRound = startCards;
   roundsData = [];
   currentDealerIdx = 0;
   longestWordBonus = document.getElementById('longestWordBonus').checked;
@@ -216,6 +245,8 @@ function startGame() {
   document.getElementById('mostWordsBonus').disabled = true;
   document.getElementById('longestWordPoints').disabled = true;
   document.getElementById('mostWordsPoints').disabled = true;
+  document.getElementById('startCards').disabled = true; // NEW
+  document.getElementById('endCards').disabled = true;   // NEW
   document.getElementById('preGameConfig')?.classList.add('hidden');
 
   // Clear previous game state from UI
@@ -767,6 +798,8 @@ if (typeof window !== 'undefined') {
     scores: {
       get() { return Object.assign({}, scores); }
     },
+    startCards: { get() { return startCards; } },      // NEW
+    endCards:   { get() { return maxRound; } },        // NEW
   });
 
   window.QuiddlerGame = ns;
@@ -792,6 +825,8 @@ function resetToPreGame() {
   players = [];
   scores = {};
   currentRound = 3;
+  startCards = 3;      // NEW
+  maxRound = 10;       // NEW
   roundsData = [];
   currentDealerIdx = 0;
 
@@ -812,6 +847,8 @@ function resetToPreGame() {
   document.getElementById('mostWordsBonus').disabled = false;
   document.getElementById('longestWordPoints').disabled = false;
   document.getElementById('mostWordsPoints').disabled = false;
+  document.getElementById('startCards').disabled = false;  // NEW
+  document.getElementById('endCards').disabled = false;    // NEW
 
   // Reset primary CTA label
   const go = document.getElementById('gameGo');
