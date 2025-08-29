@@ -47,6 +47,7 @@ let mostWordsBonus = false;
 let longestWordPoints = 0;
 let mostWordsPoints = 0;
 let currentDealerIdx = 0;
+let dictSource = 'local';        // NEW: 'local' | 'api'
 // New UI flow state
 let gameOver = false;                   // when true, no more rounds accepted
 let lastGameCompletedAllRounds = false; // track whether the prior game reached the final round
@@ -78,7 +79,8 @@ function serializeGameState() {
     gameOver,
     lastGameCompletedAllRounds,
     startCards,            // NEW
-    maxRound               // NEW (endCards)
+    maxRound,              // NEW (endCards)
+    dictSource             // NEW
   };
 }
 function saveGameState() {
@@ -117,6 +119,7 @@ function loadGameState() {
     // NEW: load configurable ranges (fallback to legacy defaults)
     startCards = +data.startCards || 3;
     maxRound = +data.maxRound || 10;
+    dictSource = data.dictSource === 'api' ? 'api' : 'local';
     currentDealerIdx = data.currentDealerIdx || 0;
     longestWordBonus = !!data.longestWordBonus;
     mostWordsBonus = !!data.mostWordsBonus;
@@ -150,6 +153,13 @@ function loadGameState() {
     const ec = document.getElementById('endCards');
     if (sc) { sc.value = startCards; sc.disabled = true; }
     if (ec) { ec.value = maxRound; ec.disabled = true; }
+    // NEW: reflect dict source radios
+    const dl = document.getElementById('dictLocalRadio');
+    const da = document.getElementById('dictApiRadio');
+    if (dl && da) {
+      if (dictSource === 'api') da.checked = true; else dl.checked = true;
+      dl.disabled = true; da.disabled = true;
+    }
 
     document.getElementById('preGameConfig')?.classList.add('hidden');
     document.getElementById('gameArea')?.classList.remove('hidden');
@@ -223,6 +233,7 @@ function startGame() {
   }
   startCards = rawStart;
   maxRound = rawEnd;
+  dictSource = document.querySelector('input[name="dictSource"]:checked')?.value === 'api' ? 'api' : 'local';
 
   // Reset all global variables to initial state (after validation)
   gameStarted = true;
@@ -247,6 +258,7 @@ function startGame() {
   document.getElementById('mostWordsPoints').disabled = true;
   document.getElementById('startCards').disabled = true; // NEW
   document.getElementById('endCards').disabled = true;   // NEW
+  const dl = document.getElementById('dictLocalRadio'); const da = document.getElementById('dictApiRadio'); if (dl) dl.disabled = true; if (da) da.disabled = true; // NEW
   document.getElementById('preGameConfig')?.classList.add('hidden');
 
   // Clear previous game state from UI
@@ -321,6 +333,46 @@ function setupRound() {
 function validateWord(word) {
   const cleanedWord = plainWord(word).toUpperCase();
   return validWordsMap.hasOwnProperty(cleanedWord);
+}
+
+// NEW: async API validation with fallback to local & caching
+const apiValidateCache = Object.create(null); // UPPER -> true/false | Promise<boolean>
+async function validateWordAPI(word) {
+  const cleaned = plainWord(word).toLowerCase();
+  const upper = cleaned.toUpperCase();
+  if (!cleaned) return false;
+  if (upper in apiValidateCache) {
+    const v = apiValidateCache[upper];
+    return typeof v === 'boolean' ? v : v; // if Promise or boolean
+  }
+  const p = (async () => {
+    try {
+      const status = await getWordDefinitionAPIStatus(cleaned);
+      if (status.error) {
+        // Network / non-404 error: fallback to local (do NOT cache result so a later retry can re-check)
+        return validateWord(cleaned);
+      }
+      // No error: status.found determines validity (no fallback on clean not-found)
+      return !!status.found;
+    } catch (e) {
+      console.warn('API validate failed (exception), fallback local', e);
+      return validateWord(cleaned);
+    }
+  })();
+  // Cache only after resolution when it was a definitive (non-error) response
+  apiValidateCache[upper] = p.then(v => {
+    // If we fell back due to network error, don't cache (cannot easily detect here except by re-calling status).
+    // Heuristic: if API said found OR API said not found (pure boolean result differing from local), we cache.
+    // We approximate by always caching; but to honor requirement, re-run status and only cache on non-error.
+    (async () => {
+      try {
+        const st = await getWordDefinitionAPIStatus(cleaned);
+        if (!st.error) apiValidateCache[upper] = v; else delete apiValidateCache[upper];
+      } catch { delete apiValidateCache[upper]; }
+    })();
+    return v;
+  });
+  return p;
 }
 
 /**
@@ -623,9 +675,26 @@ function toggleChallenge(btn, e) {
   challengerDropdown.innerHTML = `<option value="">Select Challenger</option><option value="null">GOD</option>` +
     players.filter(p => p !== player).map(p => `<option>${p}</option>`).join('');
 
-  challengerDropdown.onchange = function() {
+  challengerDropdown.onchange = async function() {
     if (this.value === '') { this.remove(); return; }
     if (this.value !== 'null') wordObj.challenger = this.value;
+    // If using API, mark as checking and re-render spinner first
+    if (dictSource === 'api') {
+      wordObj.state = 'checking';
+      updatePreviousRounds();
+      try {
+        const ok = await validateWordAPI(wordObj.text);
+        wordObj.state = ok ? 'valid' : 'invalid';
+      } catch (err) {
+        console.warn('Validation error (api)', err);
+        wordObj.state = validateWord(wordObj.text) ? 'valid' : 'invalid';
+      }
+      recalculateScores();
+      updatePreviousRounds();
+      this.remove();
+      return;
+    }
+    // Local path (sync)
     wordObj.state = validateWord(wordObj.text) ? 'valid' : 'invalid';
     recalculateScores();
     updatePreviousRounds();
@@ -800,6 +869,7 @@ if (typeof window !== 'undefined') {
     },
     startCards: { get() { return startCards; } },      // NEW
     endCards:   { get() { return maxRound; } },        // NEW
+    dictSource: { get() { return dictSource; } },      // NEW
   });
 
   window.QuiddlerGame = ns;
@@ -849,6 +919,7 @@ function resetToPreGame() {
   document.getElementById('mostWordsPoints').disabled = false;
   document.getElementById('startCards').disabled = false;  // NEW
   document.getElementById('endCards').disabled = false;    // NEW
+  const dl2 = document.getElementById('dictLocalRadio'); const da2 = document.getElementById('dictApiRadio'); if (dl2) dl2.disabled = false; if (da2) da2.disabled = false; // NEW
 
   // Reset primary CTA label
   const go = document.getElementById('gameGo');

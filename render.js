@@ -35,6 +35,7 @@ function renderChit(word, opts = {}) {
   const colorClass =
     effectiveState === 'invalid' ? 'bg-red-200'
     : effectiveState === 'valid' ? 'bg-green-200'
+    : effectiveState === 'checking' ? 'bg-yellow-200 animate-pulse'
     : 'bg-gray-200';
 
   const wantDefIcon = (forceShowDefIcon || effectiveState === 'valid') && showDefIcon;
@@ -64,6 +65,7 @@ function renderChit(word, opts = {}) {
       ${tooltipAttr} ${interAttrs}>
       <span class="font-semibold tracking-tight">${word.text.toUpperCase()}</span>
       <span class="opacity-80">[${word.score}]</span>
+      ${effectiveState === 'checking' ? '<span class="w-3 h-3 border-2 border-gray-500 border-t-transparent rounded-full animate-spin"></span>' : ''}
       ${defIcon}
     </button>
   `;

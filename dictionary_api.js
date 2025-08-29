@@ -45,6 +45,30 @@ async function getWordDefinitionAPI(word) {
   }
 }
 
+// NEW: status-returning variant for validation so we can distinguish not-found from network failure.
+// Returns { found:boolean, error:boolean }.
+async function getWordDefinitionAPIStatus(word) {
+  const w = String(word || '').trim();
+  if (!w) return { found:false, error:false };
+  const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w.toLowerCase())}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      if (response.status === 404) return { found:false, error:false }; // definitive not found
+      return { found:false, error:true }; // other HTTP errors count as error (fallback allowed)
+    }
+    const data = await response.json();
+    if (!Array.isArray(data) || data.length === 0) return { found:false, error:false };
+    return { found:true, error:false };
+  } catch (e) {
+    return { found:false, error:true }; // network/abort -> treat as error (allow fallback)
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // ---------- utils ----------
 function esc(s='') {
   return String(s)

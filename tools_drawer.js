@@ -131,16 +131,19 @@ function initToolsDrawer(){
     const onlineWrap = document.getElementById('dictOnlineWrap');
     const onlineEl   = document.getElementById('dictOnline');
     const loadingEl  = document.getElementById('dictOnlineLoading');
+    const emptyHint  = document.getElementById('dictEmpty');
     const raw = (word || '').trim();
     const cleaned = plainWord(raw);
 
-    // No input → hide everything
+    // No input → hide everything & show hint
     if (!cleaned) {
       localWrap?.classList.add('hidden');
       onlineWrap?.classList.add('hidden');
       loadingEl?.classList.add('hidden');
+      if (emptyHint) emptyHint.classList.remove('hidden');
       return;
     }
+    if (emptyHint) emptyHint.classList.add('hidden');
 
     // Local: always show a section; fallback text if missing
     const local = getWordDefinitionLocal(cleaned);
@@ -272,6 +275,8 @@ function initToolsDrawer(){
       if (dictDebounceTimer) { clearTimeout(dictDebounceTimer); dictDebounceTimer = null; }
       await renderDefinition(dictInput.value);
       setTimeout(() => { dictInput?.focus(); dictInput?.select?.(); }, 0);
+      const panel = document.getElementById('toolsPanelDict');
+      if (panel) panel.scrollTop = 0;
     },
     showPlay: () => {
       openDrawer();

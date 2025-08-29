@@ -53,13 +53,24 @@
                     <span>points</span>
                 </div>
                 <!-- New: starting / ending number of cards -->
-                <div class="flex items-center flex-wrap gap-2 text-sm">
+                <div class="flex items-center flex-wrap gap-2">
                   <span>Play with</span>
                   <input id="startCards" type="number" min="3" max="30" value="3" class="w-16 border rounded p-1 text-right" aria-label="Starting number of cards">
                   <span>to</span>
                   <input id="endCards" type="number" min="1" max="30" value="10" class="w-16 border rounded p-1 text-right" aria-label="Ending number of cards">
                   <span>cards</span>
                 </div>
+                <fieldset class="flex flex-wrap items-center gap-4">
+                  <!-- <span class="mr-1">Use</span> -->
+                  <label class="inline-flex items-center gap-1">
+                    <input type="radio" name="dictSource" id="dictLocalRadio" value="local" checked>
+                    <span>Collins '19 Dictionary</span>
+                  </label>
+                  <label class="inline-flex items-center gap-1">
+                    <input type="radio" name="dictSource" id="dictApiRadio" value="api">
+                    <span>Free Dictionary API</span>
+                  </label>
+                </fieldset>
             </div>
 
             <!-- Start Game button -->
