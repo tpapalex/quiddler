@@ -44,10 +44,7 @@ function renderChit(word, opts = {}) {
              data-word="${word.text.replace(/"/g,'&quot;')}"
              data-tippy-content="Look up"
              title="">
-         <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" viewBox="0 0 24 24" fill="none"
-              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-           <path d="M12 6.75c-1.71-1.02-3.77-1.5-6-1.5v11.25c2.23 0 4.29.48 6 1.5m0-11.25c1.71-1.02 3.77-1.5 6-1.5v11.25c-2.23 0-4.29.48-6 1.5m0-11.25v11.25"/>
-         </svg>
+         <img src="book-open.svg" alt="" class="w-3 h-3 filter invert"/>
        </span>`
     : '';
 

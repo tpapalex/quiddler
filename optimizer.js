@@ -347,12 +347,13 @@ function chooseBestPlay(candidates, rackCounts, params = {}) {
   };
 }
 
-function optimize(params) {
+async function optimize(params) {
   // Params from UI:
   // - tiles: rack string like "(qu)a(th)i"; parser handles parentheses
   // - noDiscard: if true, cannot discard one leftover tile; all leftovers penalize
   // - commonOnly + minZipF + override2and3: frequency filter using common_lemmas.js (window.wordFreq)
   // - currentLongest/currentMost: thresholds to beat for bonuses (strictly greater)
+  // - apiFilter: if true, further require words to appear in Free Dictionary API (lazy best-play validation)
   // Returns: bestplay summary consumed by render.renderOptimizedPlayFromResult
   const {
     tiles = '',
@@ -362,6 +363,7 @@ function optimize(params) {
     minZipF = 0,
     currentLongest = 0,
     currentMost = 0,
+    apiFilter = false,
   } = params || {};
 
   const rack = parseCards(String(tiles)).map(normalizeToken);
@@ -380,13 +382,42 @@ function optimize(params) {
   const trie = getValidWordTrie();
   const candidates = generateWordCandidates(trie, rackCounts, 2, { commonGate });
 
-  const bestplay = chooseBestPlay(candidates, rackCounts, {
+  let bestplay = chooseBestPlay(candidates, rackCounts, {
     noDiscard,
     currentLongest: currentLongest === 0 ? Infinity : currentLongest,
     currentMost:    currentMost    === 0 ? Infinity : currentMost,
     longestBonus: longestWordPoints,
     mostBonus:    mostWordsPoints,
   });
+
+  if (apiFilter) {
+    if (typeof validateWordAPIBatch !== 'function') {
+      console.warn('API filter requested but validateWordAPIBatch is unavailable. Skipping API filter.');
+    } else {
+      let remainingCandidates = candidates.slice();
+      let iterations = 0;
+      while (iterations < 5 && bestplay.words.length) {
+        const { invalidPlain } = await validateWordAPIBatch(bestplay.words.map(w => w.word));
+        if (!invalidPlain.size) break;
+        remainingCandidates = remainingCandidates.filter(c => !invalidPlain.has(plainWord(c.word).toLowerCase()));
+        if (!remainingCandidates.length) {
+          bestplay = {
+            words: [], baseScore: 0, leftoverValue: 0, bonus: { longest:0, most:0 }, totalScore: 0,
+            longestWordLength: 0, wordCount: 0, discardTile: null, unusedTiles: rack.slice()
+          };
+          break;
+        }
+        bestplay = chooseBestPlay(remainingCandidates, rackCounts, {
+          noDiscard,
+          currentLongest: currentLongest === 0 ? Infinity : currentLongest,
+          currentMost:    currentMost    === 0 ? Infinity : currentMost,
+          longestBonus: longestWordPoints,
+          mostBonus:    mostWordsPoints,
+        });
+        iterations++;
+      }
+    }
+  }
 
   return bestplay;
 }

@@ -111,8 +111,7 @@
               aria-label="Dictionary (⌘/Ctrl+I)"
               data-tippy-content="Dictionary (⌘/Ctrl+I)"
               type="button">
-        <img src="https://cdn.jsdelivr.net/npm/heroicons@2.1.5/24/outline/book-open.svg"
-             class="w-7 h-7 invert" alt="" />
+        <img src="book-open.svg" class="w-7 h-7 invert" alt="" />
       </button>
 
       <button id="optToolBtn"
@@ -120,8 +119,7 @@
               aria-label="Solver (⌘/Ctrl+O)"
               data-tippy-content="Solver (⌘/Ctrl+O)"
               type="button">
-        <img src="https://cdn.jsdelivr.net/npm/heroicons@2.1.5/24/outline/cog-6-tooth.svg"
-             class="w-7 h-7 invert" alt="" />
+        <img src="cog-6-tooth.svg" class="w-7 h-7 invert" alt="" />
       </button>
     </div>
 
@@ -193,6 +191,16 @@
             <label class="inline-flex items-center gap-2">
               <input id="optNoDiscard" type="checkbox" class="rounded">
               <span class="text-sm">Do not discard any card</span>
+            </label>
+          </div>
+
+          <div class="mt-3">
+            <label class="flex flex-wrap items-center gap-2">
+              <input id="optApiFilter" type="checkbox" class="rounded">
+              <span class="text-sm">
+                Use only words that are in the
+                <a href="https://dictionaryapi.dev/" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">Free Dictionary API</a>
+              </span>
             </label>
           </div>
 

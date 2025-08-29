@@ -3,7 +3,7 @@
 // dictionary_api.js
 // Helpers to look up definitions for a word:
 // - getWordDefinitionLocal(word): case-insensitive lookup from collins_dictionary.js (validWordsMap)
-// - getWordDefinitionAPI(word): fetch from Free Dictionary API and RETURN RAW JSON (array of entries)
+// - getWordDefinitionAPI(word): fetch from Free Dictionary API and RETURN { found, error, data }
 // - renderOnlineDict(word, apiJson): build pretty grouped HTML for parts of speech/senses
 //
 // Notes:
@@ -16,58 +16,101 @@ function getWordDefinitionLocal(word) {
   return validWordsMap[String(word || '').toUpperCase()] ?? null;
 }
 
-// API helper: returns the Free Dictionary API JSON (array of entries) or null on failure/no match.
+// Unified: getWordDefinitionAPI returns { found, error, data } 
+// Also seeds FD_STATUS_CACHE (boolean) so optimizer/game benefit from drawer lookups.
 async function getWordDefinitionAPI(word) {
-  const w = String(word || '').trim();
-  if (!w) return null;
-
-  const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w.toLowerCase())}`;
-  // Optional: simple timeout so we don't hang forever
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      console.warn(`Free Dictionary API error for "${w}": ${response.status}`);
-      return null;
-    }
-
-    const data = await response.json();
-    if (!Array.isArray(data) || data.length === 0) return null;
-
-    return data;
-  } catch (error) {
-    console.error('Free Dictionary API request/parsing failed:', error);
-    return null;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-// NEW: status-returning variant for validation so we can distinguish not-found from network failure.
-// Returns { found:boolean, error:boolean }.
-async function getWordDefinitionAPIStatus(word) {
-  const w = String(word || '').trim();
-  if (!w) return { found:false, error:false };
-  const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w.toLowerCase())}`;
+  const wRaw = String(word || '').trim();
+  if (!wRaw) return { found:false, error:false, data:null };
+  const w = wRaw.toLowerCase();
+  const upper = w.toUpperCase();
+  const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(w)}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8000);
   try {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
-      if (response.status === 404) return { found:false, error:false }; // definitive not found
-      return { found:false, error:true }; // other HTTP errors count as error (fallback allowed)
+      if (response.status === 404) {
+        FD_STATUS_CACHE[upper] = false; // definitive miss
+        return { found:false, error:false, data:null };
+      }
+      return { found:false, error:true, data:null }; // transient
     }
-    const data = await response.json();
-    if (!Array.isArray(data) || data.length === 0) return { found:false, error:false };
-    return { found:true, error:false };
-  } catch (e) {
-    return { found:false, error:true }; // network/abort -> treat as error (allow fallback)
+    const json = await response.json();
+    const ok = Array.isArray(json) && json.length > 0;
+    FD_STATUS_CACHE[upper] = ok; // seed boolean cache
+    return { found: ok, error:false, data: ok ? json : null };
+  } catch {
+    return { found:false, error:true, data:null }; // do not seed cache on error
   } finally {
     clearTimeout(timeoutId);
   }
 }
+
+// Batch API validation (moved back from game.js)
+// Accepts display word forms, returns { validPlain:Set<string>, invalidPlain:Set<string> }
+async function validateWordAPIBatch(displayWords) {
+  const toFetch = [];
+  const inFlight = [];
+  const plainList = [];
+
+  function displayToPlain(dw) {
+    return String(dw || '')
+      .replace(/\([^)]*\)/g, (m) => m.replace(/[()]/g,''))
+      .replace(/[()]/g,'')
+      .replace(/[^a-z]/gi,'')
+      .toLowerCase();
+  }
+
+  const sharedCache = (typeof window !== 'undefined' && window.__FDStatusCache) ? window.__FDStatusCache : (globalThis.__FDStatusCache ||= Object.create(null));
+
+  for (const dw of (displayWords || [])) {
+    const pw = displayToPlain(dw);
+    if (!pw) continue;
+    const key = pw.toUpperCase();
+    plainList.push(pw);
+    const val = sharedCache[key];
+    if (val == null) {
+      toFetch.push(pw);
+    } else if (val && typeof val.then === 'function') {
+      inFlight.push(val.then(v => { sharedCache[key] = v; }));
+    }
+  }
+
+  if (toFetch.length) {
+    const fetchPromises = toFetch.map(async pw => {
+      const key = pw.toUpperCase();
+      const prom = (async () => {
+        try {
+          const { error, found } = await getWordDefinitionAPI(pw);
+          if (error) return true;
+          return !!found;
+        } catch { return true; }
+      })();
+      sharedCache[key] = prom;
+      const resolved = await prom;
+      sharedCache[key] = resolved;
+    });
+    await Promise.all(fetchPromises);
+  }
+  if (inFlight.length) await Promise.all(inFlight);
+
+  const validPlain = new Set();
+  const invalidPlain = new Set();
+  for (const pw of plainList) {
+    const key = pw.toUpperCase();
+    const v = sharedCache[key];
+    if (typeof v === 'boolean' ? v : true) validPlain.add(pw); else invalidPlain.add(pw);
+  }
+  return { validPlain, invalidPlain };
+}
+
+// Shared Free Dictionary API status cache (boolean values). Populated by both game & solver.
+const FD_STATUS_CACHE = (typeof window !== 'undefined' && window.__FDStatusCache)
+  ? window.__FDStatusCache
+  : Object.create(null);
+if (typeof window !== 'undefined') window.__FDStatusCache = FD_STATUS_CACHE;
+
+// Removed batch validator (moved to game.js as validateWordAPIBatch)
 
 // ---------- utils ----------
 function esc(s='') {

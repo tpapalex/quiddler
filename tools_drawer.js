@@ -125,7 +125,6 @@ function initToolsDrawer(){
   const DICT_DEBOUNCE_MS = 350;
 
   async function renderDefinition(word) {
-    // Show local immediately; then fetch online and replace when available.
     const localWrap  = document.getElementById('dictLocalWrap');
     const localEl    = document.getElementById('dictLocal');
     const onlineWrap = document.getElementById('dictOnlineWrap');
@@ -135,7 +134,6 @@ function initToolsDrawer(){
     const raw = (word || '').trim();
     const cleaned = plainWord(raw);
 
-    // No input → hide everything & show hint
     if (!cleaned) {
       localWrap?.classList.add('hidden');
       onlineWrap?.classList.add('hidden');
@@ -145,27 +143,34 @@ function initToolsDrawer(){
     }
     if (emptyHint) emptyHint.classList.add('hidden');
 
-    // Local: always show a section; fallback text if missing
+    // Local dictionary (always show block, with fallback text)
     const local = getWordDefinitionLocal(cleaned);
     if (localWrap && localEl) {
       localEl.innerHTML = local ?? '<span class="text-gray-500">No definition found</span>';
       localWrap.classList.remove('hidden');
     }
 
-    // If no local definition, do NOT fetch or show online
-    if (!local) {
-      loadingEl?.classList.add('hidden');
-      onlineWrap?.classList.add('hidden');
-      return;
-    }
-
-    // Prepare online area and fetch only when local exists
-    onlineWrap?.classList.add('hidden');
+    // Online dictionary
+    onlineWrap?.classList.remove('hidden');
+    if (onlineEl) onlineEl.innerHTML = '';
     loadingEl?.classList.remove('hidden');
-
-    const online = await getWordDefinitionAPI(cleaned);
-    renderOnlineDict(word, online, { senseLimit: 3 });
-    loadingEl?.classList.add('hidden');
+    try {
+      const { found, error, data } = await getWordDefinitionAPI(cleaned);
+      if (!error && found && data) {
+        renderOnlineDict(word, data, { senseLimit: 3 });
+        // renderOnlineDict will unhide wrapper; ensure visible
+        onlineWrap?.classList.remove('hidden');
+      } else {
+        // Show explicit message instead of hiding
+        if (onlineEl) onlineEl.innerHTML = '<span class="text-gray-500">No definition found</span>';
+        onlineWrap?.classList.remove('hidden');
+      }
+    } catch (e) {
+      if (onlineEl) onlineEl.innerHTML = '<span class="text-gray-500">Lookup unavailable</span>';
+      onlineWrap?.classList.remove('hidden');
+    } finally {
+      loadingEl?.classList.add('hidden');
+    }
   }
 
   async function doLookup(){ await renderDefinition(dictInput.value); }
@@ -205,6 +210,13 @@ function initToolsDrawer(){
   const playGo            = document.getElementById('playGo');
   const playStatus        = document.getElementById('playStatus');
   const playResult        = document.getElementById('playResult');
+  const optApiFilter      = document.getElementById('optApiFilter'); // RENAMED
+
+  // Default API filter checkbox if game dictionary source is API
+  try {
+    const ds = (window.QuiddlerGame && window.QuiddlerGame.dictSource) ? window.QuiddlerGame.dictSource : (typeof dictSource !== 'undefined' ? dictSource : 'local');
+    if (optApiFilter && ds === 'api') optApiFilter.checked = true;
+  } catch(_){}
 
   function updateCommonOptions() {
     // Enable/disable frequency controls as a group
@@ -241,13 +253,14 @@ function initToolsDrawer(){
     const minZipF        = commonOnly ? Number(optZipf.value) : 0;
     const currentLongest = cleanInt(optCurrentLongest);
     const currentMost    = cleanInt(optCurrentMost);
+    const apiFilter      = !!optApiFilter?.checked; // RENAMED
 
     playStatus.textContent = 'Searching…';
     playResult.classList.remove('hidden');
     playResult.innerHTML = '';
 
     try {
-      const result = await window.QuiddlerSolver.optimize({ tiles, noDiscard, commonOnly, override2and3, minZipF, currentLongest, currentMost });
+      const result = await window.QuiddlerSolver.optimize({ tiles, noDiscard, commonOnly, override2and3, minZipF, currentLongest, currentMost, apiFilter });
 
       playStatus.textContent = '';
 

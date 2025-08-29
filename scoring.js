@@ -18,9 +18,9 @@ function parseCards(word) {
   return word.match(/\([a-z]+\)|[a-z]/gi) || [];
 }
 
-// Calculate score for a list of card tokens
+// Calculate score for a list of card tokens (now uses normalizeToken for consistency)
 function calculateScore(cards) {
-  return cards.reduce((total, card) => total + (cardScores[card.replace(/[()]/g, '').toLowerCase()] || 1), 0);
+  return cards.reduce((total, card) => total + (cardScores[normalizeToken(card)] || 1), 0);
 }
 
 // Utility to convert a token to display form (wrap digraphs in parentheses)
@@ -34,10 +34,25 @@ function normalizeToken(token) {
   return String(token || '').replace(/[()]/g, '').toLowerCase();
 }
 
+// NEW: Strip leading penalty marker '-'
+function stripPenalty(wordText) {
+  return String(wordText || '').replace(/^-/, '');
+}
+
+// NEW: Tokens (cards) for a chit/word (penalty removed first)
+function tokensForWord(wordText) {
+  return parseCards(stripPenalty(wordText));
+}
+
+// NEW: Score helper for a chit text (handles leading '-')
+function scoreForChit(wordText) {
+  return calculateScore(tokensForWord(wordText));
+}
+
 // Make the letter-points array for a word text (handles digraphs)
 function pointsArrayFor(wordText) {
-  const letters = parseCards(wordText.replace('-', ''));
-  return letters.map(l => cardScores[l.replace(/[()]/g, '').toLowerCase()] || 1);
+  const letters = tokensForWord(wordText);
+  return letters.map(l => cardScores[normalizeToken(l)] || 1);
 }
 
 // NEW: Join a list of tokens into a display word using parentheses for digraphs
@@ -47,7 +62,7 @@ function joinTokensForDisplay(tokens) {
 
 // NEW: Convert a chit text into its plain letters (lowercase, no parentheses or '-')
 function plainWord(wordText) {
-  const tokens = parseCards(String(wordText || '').replace('-', ''));
+  const tokens = tokensForWord(wordText);
   return tokens.map(normalizeToken).join('');
 }
 
@@ -75,10 +90,13 @@ if (typeof window !== 'undefined') {
     toCardToken,
     pointsArrayFor,
     breakdownStr,
-    // new exports
+    // exports
     normalizeToken,
     joinTokensForDisplay,
     plainWord,
     plainLength,
+    stripPenalty,
+    tokensForWord,
+    scoreForChit,
   });
 }

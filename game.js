@@ -330,60 +330,53 @@ function setupRound() {
 /**
  * True if a bare word (parentheses removed) exists in the word list.
  */
-function validateWord(word) {
+function validateWordLocal(word) {
   const cleanedWord = plainWord(word).toUpperCase();
   return validWordsMap.hasOwnProperty(cleanedWord);
 }
 
 // NEW: async API validation with fallback to local & caching
-const apiValidateCache = Object.create(null); // UPPER -> true/false | Promise<boolean>
+// Unified cache with dictionary_api.js (FD_STATUS_CACHE on window.__FDStatusCache)
+// Removed local apiValidateCache; reuse shared cache so solver & game share results.
 async function validateWordAPI(word) {
-  // Updated logic: first consult local dictionary. Only if the word is locally valid do we
-  // perform the (slower) API call to confirm. If local says invalid, we skip API entirely.
   const cleaned = plainWord(word).toLowerCase();
-  const upper = cleaned.toUpperCase();
   if (!cleaned) return false;
+  const upper = cleaned.toUpperCase();
+  // Access shared cache (boolean or Promise) if available
+  const sharedCache = (typeof window !== 'undefined' && window.__FDStatusCache) ? window.__FDStatusCache : (globalThis.__FDStatusCache ||= Object.create(null));
 
-  // Cache hit (boolean or in-flight promise)
-  if (upper in apiValidateCache) {
-    const v = apiValidateCache[upper];
-    return typeof v === 'boolean' ? v : v; // promise or boolean
-  }
-
-  // Local preliminary check
-  const localValid = validateWord(word); // validateWord handles cleaning internally
+  // Local dictionary gate first
+  const localValid = validateWordLocal(word);
   if (!localValid) {
-    // Locally invalid -> authoritative false, no API call needed.
-    apiValidateCache[upper] = false;
+    sharedCache[upper] = false; // authoritative (Collins invalid)
     return false;
   }
 
-  // Locally valid, now confirm with API.
-  const p = (async () => {
+  // Cache hit (boolean)
+  const existing = sharedCache[upper];
+  if (typeof existing === 'boolean') return existing;
+  // In-flight promise
+  if (existing && typeof existing.then === 'function') return existing;
+
+  // Create in-flight promise, optimistic fallback on network error
+  const prom = (async () => {
     try {
-      const status = await getWordDefinitionAPIStatus(cleaned);
-      if (status.error) {
-        // Network / transient error: fall back to local validity (true) and allow retry later.
-        // Do not permanently cache failure so future attempts can retry API.
-        return true; // treat as valid based on local dictionary
-      }
-      // API definitive answer overrides local (could still return true).
-      return !!status.found;
-    } catch (e) {
-      console.warn('API validate failed (exception), fallback local', e);
-      return true; // fallback to local validity
+      const { error, found } = await getWordDefinitionAPI(cleaned);
+      if (error) return true;      // treat transient/network error as valid (fallback to local)
+      return !!found;              // definitive 404 => false
+    } catch {
+      return true;                        // exception -> optimistic
     }
   })();
-
-  // Store promise temporarily; replace with resolved boolean (only if we got a definitive API response)
-  apiValidateCache[upper] = p.then(v => {
-    // If v is true or false we cache it. If API had an error we already returned true above;
-    // we treat that as cacheable (optimistic) to avoid repeated failing calls this session.
-    apiValidateCache[upper] = v;
-    return v;
-  });
-  return p;
+  sharedCache[upper] = prom;
+  const resolved = await prom;
+  sharedCache[upper] = resolved; // replace promise with boolean
+  return resolved;
 }
+
+// ...existing code...
+// Removed validateWordAPIBatch (moved back to dictionary_api.js)
+// ...existing code...
 
 /**
  * Read all players' inputs for the round, store, recalc totals, and advance.
@@ -397,7 +390,7 @@ function nextRound() {
     const words = input.value.trim().split(/\s+/).filter(w => w);
     round.players[player] = words.map(word => ({
       text: word,
-      score: calculateScore(parseCards(word.replace('-', ''))),
+      score: scoreForChit(word),
       state: word.startsWith('-') ? 'invalid' : 'neutral',
       challenger: null
     }));
@@ -634,7 +627,7 @@ function saveEdit(player, roundIdx, btn) {
 
   roundsData[roundIdx].players[player] = newWords.map(word => ({
     text: word,
-    score: calculateScore(parseCards(word.replace('-', ''))),
+    score: scoreForChit(word),
     state: word.startsWith('-') ? 'invalid' : 'neutral',
     challenger: null
   }));
@@ -697,7 +690,7 @@ function toggleChallenge(btn, e) {
         wordObj.state = ok ? 'valid' : 'invalid';
       } catch (err) {
         console.warn('Validation error (api)', err);
-        wordObj.state = validateWord(wordObj.text) ? 'valid' : 'invalid';
+        wordObj.state = validateWordLocal(wordObj.text) ? 'valid' : 'invalid';
       }
       recalculateScores();
       updatePreviousRounds();
@@ -705,7 +698,7 @@ function toggleChallenge(btn, e) {
       return;
     }
     // Local path (sync)
-    wordObj.state = validateWord(wordObj.text) ? 'valid' : 'invalid';
+    wordObj.state = validateWordLocal(wordObj.text) ? 'valid' : 'invalid';
     recalculateScores();
     updatePreviousRounds();
     this.remove();
@@ -847,7 +840,7 @@ if (typeof window !== 'undefined') {
   const ns = Object.assign({}, window.QuiddlerGame || {}, {
     startGame,
     setupRound,
-    validateWord,
+    validateWordLocal,
     nextRound,
     recalculateScores,
     prefillPlayFor,
