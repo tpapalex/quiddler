@@ -112,6 +112,11 @@ function initToolsDrawer(){
       if (isDict) document.getElementById('dictInput')?.focus();
       else document.getElementById('tilesInput')?.focus();
     }, 0);
+
+    // AFTER switching, if showing Play tab ensure API filter default reflects current game dictionary source.
+    if (which === 'play') {
+      applyApiFilterDefault();
+    }
   }
   tabDict.addEventListener('click', () => showTab('dict'));
   tabPlay.addEventListener('click', () => showTab('play'));
@@ -212,6 +217,28 @@ function initToolsDrawer(){
   const playResult        = document.getElementById('playResult');
   const optApiFilter      = document.getElementById('optApiFilter'); // RENAMED
 
+  // Helper to (re)apply default API filter when game dict source is API.
+  function applyApiFilterDefault(){
+    if (!optApiFilter) return;
+    try {
+      const ds = (window.QuiddlerGame && window.QuiddlerGame.dictSource) ? window.QuiddlerGame.dictSource : (typeof dictSource !== 'undefined' ? dictSource : 'local');
+      // Only auto-check if user has not manually toggled (tracked via data-user-set flag)
+      if (ds === 'api' && !optApiFilter.dataset.userSet) {
+        optApiFilter.checked = true;
+      }
+    } catch(_){}
+  }
+
+  // Default API filter checkbox if game dictionary source is API (initial pass)
+  try {
+    applyApiFilterDefault();
+  } catch(_){}
+
+  // Track user interaction so we don’t override their choice later
+  if (optApiFilter) {
+    optApiFilter.addEventListener('change', () => { optApiFilter.dataset.userSet = '1'; });
+  }
+
   // Default API filter checkbox if game dictionary source is API
   try {
     const ds = (window.QuiddlerGame && window.QuiddlerGame.dictSource) ? window.QuiddlerGame.dictSource : (typeof dictSource !== 'undefined' ? dictSource : 'local');
@@ -299,6 +326,7 @@ function initToolsDrawer(){
     prefillPlay: ({ tiles, currentLongest, currentMost }) => {
       // Pre-populate Play Helper with a row's tiles and current opponent thresholds.
       openDrawer(); showTab('play');
+      applyApiFilterDefault(); // ensure default gets applied even when opened via prefill API
       const tilesInput = document.getElementById('tilesInput');
       const optNoDiscard = document.getElementById('optNoDiscard');
       const optCurrentLongest = document.getElementById('optCurrentLongest');
@@ -310,6 +338,12 @@ function initToolsDrawer(){
       if (optCurrentLongest && Number.isFinite(currentLongest)) optCurrentLongest.value = String(currentLongest);
       if (optCurrentMost && Number.isFinite(currentMost))       optCurrentMost.value    = String(currentMost);
       if (optNoDiscard) optNoDiscard.checked = true;
+
+      // If bonuses are not enabled in this game, force thresholds to 0 (ignore prefill values)
+      const longestBonusEnabled = document.getElementById('longestWordBonus')?.checked;
+      const mostBonusEnabled    = document.getElementById('mostWordsBonus')?.checked;
+      if (!longestBonusEnabled && optCurrentLongest) optCurrentLongest.value = '0';
+      if (!mostBonusEnabled && optCurrentMost)       optCurrentMost.value    = '0';
 
       if (playStatus) playStatus.textContent = '';
       if (playResult) {

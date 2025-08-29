@@ -736,6 +736,8 @@ document.getElementById('playersInput')?.addEventListener('input', function() {
     longestWordCheckbox.checked = true;
     mostWordsCheckbox.checked = true;
   }
+  // NEW: reflect changed checkbox state in points inputs immediately
+  updateBonusInputs();
 });
 
 // Pressing Enter on the players input starts the game
