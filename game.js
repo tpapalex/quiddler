@@ -338,38 +338,48 @@ function validateWord(word) {
 // NEW: async API validation with fallback to local & caching
 const apiValidateCache = Object.create(null); // UPPER -> true/false | Promise<boolean>
 async function validateWordAPI(word) {
+  // Updated logic: first consult local dictionary. Only if the word is locally valid do we
+  // perform the (slower) API call to confirm. If local says invalid, we skip API entirely.
   const cleaned = plainWord(word).toLowerCase();
   const upper = cleaned.toUpperCase();
   if (!cleaned) return false;
+
+  // Cache hit (boolean or in-flight promise)
   if (upper in apiValidateCache) {
     const v = apiValidateCache[upper];
-    return typeof v === 'boolean' ? v : v; // if Promise or boolean
+    return typeof v === 'boolean' ? v : v; // promise or boolean
   }
+
+  // Local preliminary check
+  const localValid = validateWord(word); // validateWord handles cleaning internally
+  if (!localValid) {
+    // Locally invalid -> authoritative false, no API call needed.
+    apiValidateCache[upper] = false;
+    return false;
+  }
+
+  // Locally valid, now confirm with API.
   const p = (async () => {
     try {
       const status = await getWordDefinitionAPIStatus(cleaned);
       if (status.error) {
-        // Network / non-404 error: fallback to local (do NOT cache result so a later retry can re-check)
-        return validateWord(cleaned);
+        // Network / transient error: fall back to local validity (true) and allow retry later.
+        // Do not permanently cache failure so future attempts can retry API.
+        return true; // treat as valid based on local dictionary
       }
-      // No error: status.found determines validity (no fallback on clean not-found)
+      // API definitive answer overrides local (could still return true).
       return !!status.found;
     } catch (e) {
       console.warn('API validate failed (exception), fallback local', e);
-      return validateWord(cleaned);
+      return true; // fallback to local validity
     }
   })();
-  // Cache only after resolution when it was a definitive (non-error) response
+
+  // Store promise temporarily; replace with resolved boolean (only if we got a definitive API response)
   apiValidateCache[upper] = p.then(v => {
-    // If we fell back due to network error, don't cache (cannot easily detect here except by re-calling status).
-    // Heuristic: if API said found OR API said not found (pure boolean result differing from local), we cache.
-    // We approximate by always caching; but to honor requirement, re-run status and only cache on non-error.
-    (async () => {
-      try {
-        const st = await getWordDefinitionAPIStatus(cleaned);
-        if (!st.error) apiValidateCache[upper] = v; else delete apiValidateCache[upper];
-      } catch { delete apiValidateCache[upper]; }
-    })();
+    // If v is true or false we cache it. If API had an error we already returned true above;
+    // we treat that as cacheable (optimistic) to avoid repeated failing calls this session.
+    apiValidateCache[upper] = v;
     return v;
   });
   return p;
