@@ -439,7 +439,7 @@ function setupRound() {
   document.getElementById('roundHeader').innerText = `Round ${currentRound} Cards`;
 
   document.getElementById('scoreInputs').innerHTML = `
-    <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Submit each player individually; round auto-advances after all submitted. Enter submits just that player.</div>
+    <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Round auto-advances after all players submit.</div>
     ${players.map((player, i) => `
       <div class="player-input-row mb-2 flex items-center gap-2">
         <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-0.5" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
