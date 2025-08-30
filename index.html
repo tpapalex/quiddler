@@ -31,7 +31,7 @@
     </style>
 </head>
 <body class="bg-gray-100 p-4">
-    <div class="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">
+    <div class="max-w-3xl mx-auto bg-white shadow-md rounded-lg p-6">
         <div class="mb-4 text-center">
           <h1 class="text-2xl font-bold inline-flex items-center gap-3 justify-center w-full">Quiddler Scores</h1>
           <!-- New Game button removed; now a floating action button with the tool buttons -->
@@ -40,13 +40,15 @@
         <!-- Pre-game config (visible until a game starts) -->
         <div id="preGameConfig" class="mb-4">
             <!-- Player names -->
-            <label class="block font-semibold">Player Names (comma separated):</label>
-            <input id="playersInput" class="w-full p-2 border rounded mt-2" placeholder="e.g., Alice, Bob, Charlie">
+            <div class="flex items-center gap-2 mb-2">
+              <label for="playersInput" class="text-gray-700 whitespace-nowrap">Player names</label>
+              <input id="playersInput" class="flex-1 p-2 border rounded" placeholder="e.g., Alice, Bob, Charlie">
+            </div>
 
             <!-- Bonus settings -->
             <div class="mt-2 space-y-2">
                 <div class="flex items-center flex-wrap gap-2">
-                  <span>Play with</span>
+                  <span>Rounds from</span>
                   <input id="startCards" type="number" min="3" max="30" value="3" class="w-16 border rounded p-1 text-right" aria-label="Starting number of cards">
                   <span>to</span>
                   <input id="endCards" type="number" min="1" max="30" value="10" class="w-16 border rounded p-1 text-right" aria-label="Ending number of cards">
@@ -90,7 +92,13 @@
 
             <div id="roundHeaderBar" class="flex items-center gap-3 mb-2">
               <h2 class="font-semibold text-xl leading-none flex items-center" id="roundHeader"></h2>
-              <button id="skipRoundBtn" aria-label="Skip round" class="hidden inline-flex items-center gap-1 justify-center h-6 px-3 rounded-full bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 hover:border-gray-400 active:bg-gray-300 active:border-gray-400 transition disabled:opacity-60 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-sm font-medium translate-y-[2px]" type="button">
+              <button id="submitRoundBtn" aria-label="Submit round" class="inline-flex items-center gap-1 justify-center h-6 px-3 rounded-full border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition disabled:opacity-60 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-sm font-medium translate-y-[1px]" type="button">
+                <span class="select-none">Submit</span>
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clip-rule="evenodd"/>
+                </svg>
+              </button>
+              <button id="skipRoundBtn" aria-label="Skip round" class="hidden inline-flex items-center gap-1 justify-center h-6 px-3 rounded-full bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 hover:border-gray-400 active:bg-gray-300 active:border-gray-400 transition disabled:opacity-60 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-sm font-medium translate-y-[1px]" type="button">
                 <span class="select-none">Skip</span>
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="w-4 h-4"><path d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256l-7.108-4.061C13.555 6.346 12 7.249 12 8.689v2.34L5.055 7.061Z"/></svg>
               </button>

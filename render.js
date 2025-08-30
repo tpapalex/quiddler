@@ -265,7 +265,7 @@ function renderRound(round, roundIdx, {interactive = true} = {}) {
   if (round && round.skipped) {
     return `
       <div class="my-4 flex gap-4 border-b border-gray-200 pb-4">
-        <div class="font-bold min-w-[50px] flex items-center justify-center text-xl">${round.roundNum}</div>
+        <div class="font-semibold min-w-[50px] flex items-center justify-center text-lg">${round.roundNum}${window.QuiddlerGame.CARD_EMOJI}</div>
         <div class="flex items-center text-gray-500 italic">Skipped</div>
       </div>
     `;
@@ -279,7 +279,7 @@ function renderRound(round, roundIdx, {interactive = true} = {}) {
     .join('');
   return `
     <div class="my-4 flex gap-4 border-b border-gray-200 pb-4">
-      <div class="font-bold min-w-[50px] flex items-center justify-center text-xl">${round.roundNum}</div>
+      <div class="font-semibold min-w-[50px] flex items-center justify-center text-lg">${round.roundNum}${window.QuiddlerGame.CARD_EMOJI}</div>
       <div class="flex flex-col gap-2">
         ${rows}
       </div>

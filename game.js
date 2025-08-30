@@ -47,7 +47,8 @@ let mostWordsBonus = false;
 let longestWordPoints = 0;
 let mostWordsPoints = 0;
 let currentDealerIdx = 0;
-const DEALER_EMOJI = '🃏 '; // Dealer indicator (alternatives: 🀄 🃏 🎴 ♣️ ♦️ ♠️ ❤️ 🂠)
+const DEALER_EMOJI = '🦄 '; // Dealer indicator (alternatives: 🦄 🎲 🀄 🃏 🎴 ♣️ ♦️ ♠️ ❤️ 🂠)
+const CARD_EMOJI = '\u2060🃏';
 let dictSource = 'local';        // NEW: 'local' | 'api'
 // New UI flow state
 let gameOver = false;                   // when true, no more rounds accepted
@@ -453,17 +454,19 @@ function startGame() {
  */
 function setupRound() {
   const dealer = players[currentDealerIdx % players.length];
-  document.getElementById('roundHeader').innerHTML = `Current Round <span class="text-gray-500 text-base font-medium ml-1">(${currentRound} cards)</span>`;
+  document.getElementById('roundHeader').innerHTML = `Current Round <span class="text-gray-500 text-base font-large ml-3 whitespace-nowrap">(${currentRound}${CARD_EMOJI})</span>`;
+  // Show the global submit button for the round
+  const submitBtn = document.getElementById('submitRoundBtn');
+  if (submitBtn) { submitBtn.classList.remove('hidden'); submitBtn.disabled = false; submitBtn.onclick = () => { if (!gameOver) submitPlayerPlay(); }; }
 
   // UPDATED LAYOUT: grid with auto-sized first column (max-content), shared alignment
   document.getElementById('scoreInputs').innerHTML = `
     <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Round auto-advances after all players submit.</div>
-    <div class="player-input-grid grid grid-cols-[max-content_1fr_max-content] gap-x-2 gap-y-2 items-center">
+    <div class="player-input-grid grid grid-cols-[max-content_1fr] gap-x-2 gap-y-2 items-center">
       ${players.map((player, i) => `
         <div class="player-input-row contents">
           <label for="player-words-${i}" class="player-label shrink-0 whitespace-nowrap overflow-hidden text-ellipsis flex items-center rounded-md border border-gray-200/70 bg-white/60 backdrop-blur-sm px-2 py-1 text-gray-800 font-normal shadow-sm ring-1 ring-black/0 hover:bg-white/80 transition-colors">${player}${player === dealer ? `<span class="dealer-indicator ml-1" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
           <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
-          <button type="button" class="submit-player-btn inline-flex items-center gap-1 px-2 py-1 text-sm font-medium rounded-md border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition" data-player="${player}" title="Submit all players' words">Submit</button>
         </div>`).join('')}
     </div>`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
@@ -511,18 +514,20 @@ function setupRound() {
 function rebuildInputsFromExistingRound(round) {
   if (!round) return;
   const dealer = round.dealer;
-  document.getElementById('roundHeader').innerHTML = `Current Round <span class=\"text-gray-500 text-base font-medium ml-1\">(${round.roundNum} cards)</span>`;
+  document.getElementById('roundHeader').innerHTML = `Current Round <span class=\"text-gray-500 text-base font-medium ml-1\">(${round.roundNum}${CARD_EMOJI})</span>`;
+  // Show the global submit button for the round
+  const submitBtn = document.getElementById('submitRoundBtn');
+  if (submitBtn) { submitBtn.classList.remove('hidden'); submitBtn.disabled = false; submitBtn.onclick = () => { if (!gameOver) submitPlayerPlay(); }; }
   // UPDATED LAYOUT (same grid approach as setupRound)
   document.getElementById('scoreInputs').innerHTML = `
     <div class="text-sm text-gray-500 mb-2">Round in progress. Edit & resubmit a single player as needed; challenges reset for that player's changed words. Enter submits just that player.</div>
-    <div class="player-input-grid grid grid-cols-[max-content_1fr_max-content] gap-x-2 gap-y-2 items-center">
+    <div class="player-input-grid grid grid-cols-[max-content_1fr] gap-x-2 gap-y-2 items-center">
       ${players.map((player, i) => {
         const existing = (round.players[player] || []).map(w=>w.text).join(' ');
         return `
         <div class=\"player-input-row contents\">
           <label for=\"player-words-${i}\" class=\"player-label shrink-0 whitespace-nowrap overflow-hidden text-ellipsis flex items-center rounded-md border border-gray-200/70 bg-white/60 backdrop-blur-sm px-2 py-1 text-gray-800 font-normal shadow-sm ring-1 ring-black/0 hover:bg-white/80 transition-colors\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-1.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
           <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\">
-          <button type=\"button\" class=\"submit-player-btn inline-flex items-center gap-1 px-2 py-1 text-sm font-medium rounded-md border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition\" data-player=\"${player}\" title=\"Submit all players' words\">Submit</button>
         </div>`;}).join('')}
     </div>`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
@@ -550,9 +555,7 @@ function rebuildInputsFromExistingRound(round) {
       }
     });
   });
-  document.querySelectorAll('.submit-player-btn').forEach(btn => {
-    btn.addEventListener('click', () => { if (!gameOver) submitPlayerPlay(); });
-  });
+  // No per-player submit buttons anymore
   currentRoundDraftInputs = Object.assign({}, currentRoundDraftInputs); // ensure object
   setTimeout(() => {
     Object.entries(currentRoundDraftInputs).forEach(([p,val]) => {
@@ -1229,6 +1232,7 @@ if (typeof window !== 'undefined') {
   window.QuiddlerGame.saveGameState = saveGameState;
   window.QuiddlerGame.loadGameState = loadGameState;
   window.QuiddlerGame.DEALER_EMOJI = DEALER_EMOJI; // expose emoji for render helpers
+  window.QuiddlerGame.CARD_EMOJI = CARD_EMOJI; // expose emoji for render helpers
 }
 
 // --------------- New UI Flow helpers ---------------
@@ -1242,7 +1246,7 @@ function setElementVisible(el, visible) {
 function updateSkipVisibility() {
   const btn = document.getElementById('skipRoundBtn');
   if (!btn) return;
-  const hide = !gameStarted || gameOver || currentRound === maxRound; // hide immediately upon reaching final round
+  const hide = !gameStarted || gameOver; // allow skip in final round too
   btn.classList.toggle('hidden', hide);
   btn.disabled = hide;
 }
@@ -1302,9 +1306,9 @@ function resetToPreGame() {
     p.select?.();
   }
 
-  // Ensure submit is enabled for the next game
+  // Hide submit button in pre-game
   const submitBtn = document.getElementById('submitRoundBtn');
-  if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('hidden'); }
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('hidden'); }
 
   // Hide section headers
   document.getElementById('runningTotalsHeader')?.classList.add('hidden');
