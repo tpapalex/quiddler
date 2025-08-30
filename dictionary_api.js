@@ -16,6 +16,182 @@ function getWordDefinitionLocal(word) {
   return validWordsMap[String(word || '').toUpperCase()] ?? null;
 }
 
+// Shared Free Dictionary API status cache (boolean values). Populated by both game & solver.
+const FD_STATUS_CACHE = (typeof window !== 'undefined' && window.__FDStatusCache)
+  ? window.__FDStatusCache
+  : Object.create(null);
+if (typeof window !== 'undefined') window.__FDStatusCache = FD_STATUS_CACHE;
+
+// LRU tracking for FD status cache (sequence-based; higher = more recent)
+const FD_STATUS_LRU = (typeof window !== 'undefined' && window.__FDStatusLRU)
+  ? window.__FDStatusLRU
+  : Object.create(null);
+let FD_STATUS_SEQ = (typeof window !== 'undefined' && window.__FDStatusSeq) || 0;
+
+const FD_STATUS_TS = (typeof window !== 'undefined' && window.__FDStatusTS)
+  ? window.__FDStatusTS
+  : Object.create(null);
+if (typeof window !== 'undefined') window.__FDStatusTS = FD_STATUS_TS;
+
+const FD_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+const FD_CACHE_STORAGE_KEY = 'quiddlerFDCacheV1';
+const GAME_STORAGE_KEY = 'quiddlerGameStateV1';
+
+function loadIndependentFDCache() {
+  try {
+    const raw = localStorage.getItem(FD_CACHE_STORAGE_KEY);
+    const now = Date.now();
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data && data.version === 1 && data.entries && typeof data.seq === 'number') {
+        let maxSeq = data.seq;
+        let expired = 0;
+        Object.entries(data.entries).forEach(([k,obj]) => {
+          if (!obj || typeof obj.v !== 'boolean') return;
+          const ts = typeof obj.t === 'number' ? obj.t : now;
+          if (now - ts > FD_CACHE_TTL_MS) { expired++; return; }
+          FD_STATUS_CACHE[k] = obj.v;
+          const s = typeof obj.s === 'number' ? obj.s : 0;
+          FD_STATUS_LRU[k] = s;
+          FD_STATUS_TS[k] = ts;
+          if (s > maxSeq) maxSeq = s;
+        });
+        FD_STATUS_SEQ = maxSeq;
+        if (typeof window !== 'undefined') window.__FDStatusSeq = FD_STATUS_SEQ;
+        if (expired) persistIndependentFDCache(); // rewrite without expired
+        return; // done
+      }
+    }
+    // Migration: no independent cache; attempt extraction from legacy game save fields
+    const legacyRaw = localStorage.getItem(GAME_STORAGE_KEY);
+    if (legacyRaw) {
+      const g = JSON.parse(legacyRaw);
+      if (g && g.fdStatusCache) {
+        const cache = g.fdStatusCache;
+        const lru = g.fdStatusLRU || {};
+        let maxSeq = g.fdStatusSeq || 0;
+        Object.entries(cache).forEach(([k,v]) => {
+          if (typeof v === 'boolean') {
+            FD_STATUS_CACHE[k] = v;
+            const seq = lru[k] || 0;
+            FD_STATUS_LRU[k] = seq;
+            FD_STATUS_TS[k] = Date.now();
+            if (seq > maxSeq) maxSeq = seq;
+          }
+        });
+        FD_STATUS_SEQ = maxSeq;
+        if (typeof window !== 'undefined') window.__FDStatusSeq = FD_STATUS_SEQ;
+        // Immediately persist in new format
+        persistIndependentFDCache();
+      }
+    }
+  } catch (e) {
+    console.warn('FD cache load failed', e);
+  }
+}
+function persistIndependentFDCache(limit = 2000) {
+  try {
+    const now = Date.now();
+    // Drop expired before persisting
+    Object.keys(FD_STATUS_CACHE).forEach(k => {
+      const ts = FD_STATUS_TS[k] || now;
+      if (now - ts > FD_CACHE_TTL_MS) {
+        delete FD_STATUS_CACHE[k];
+        delete FD_STATUS_LRU[k];
+        delete FD_STATUS_TS[k];
+      }
+    });
+    // Collect boolean entries only
+    const items = Object.keys(FD_STATUS_CACHE)
+      .filter(k => typeof FD_STATUS_CACHE[k] === 'boolean')
+      .map(k => [k, FD_STATUS_LRU[k] || 0]);
+    // Sort newest first
+    items.sort((a,b)=> b[1]-a[1]);
+    const trimmed = items.slice(0, limit);
+    const entries = {};
+    trimmed.forEach(([k,seq]) => { entries[k] = { v: FD_STATUS_CACHE[k], s: seq, t: FD_STATUS_TS[k] || now }; });
+    const payload = { version:1, seq: FD_STATUS_SEQ, entries };
+    localStorage.setItem(FD_CACHE_STORAGE_KEY, JSON.stringify(payload));
+  } catch (e) {
+    // Silently ignore quota / stringify errors
+  }
+}
+// Override previous persistence throttle to use independent key only.
+let __fdPersistTimer = null;
+function scheduleFDCachePersist() {
+  if (typeof window === 'undefined') return;
+  if (__fdPersistTimer) return;
+  __fdPersistTimer = setTimeout(() => {
+    __fdPersistTimer = null;
+    persistIndependentFDCache();
+  }, 400);
+}
+// Allow manual clearing
+function clearFDCache() {
+  try {
+    Object.keys(FD_STATUS_CACHE).forEach(k => delete FD_STATUS_CACHE[k]);
+    Object.keys(FD_STATUS_LRU).forEach(k => delete FD_STATUS_LRU[k]);
+    Object.keys(FD_STATUS_TS).forEach(k => delete FD_STATUS_TS[k]);
+    FD_STATUS_SEQ = 0;
+    if (typeof window !== 'undefined') window.__FDStatusSeq = 0;
+    persistIndependentFDCache();
+  } catch {}
+}
+if (typeof window !== 'undefined') window.clearFDCache = clearFDCache;
+
+// Initialize independent cache at script load
+try { loadIndependentFDCache(); } catch {}
+
+function touchFD(key) {
+  // Sync forward if external sequence advanced (e.g., after state restore)
+  if (typeof window !== 'undefined' && typeof window.__FDStatusSeq === 'number' && window.__FDStatusSeq > FD_STATUS_SEQ) {
+    FD_STATUS_SEQ = window.__FDStatusSeq;
+  }
+  FD_STATUS_LRU[key] = ++FD_STATUS_SEQ;
+  FD_STATUS_TS[key] = Date.now();
+  if (typeof window !== 'undefined') window.__FDStatusSeq = FD_STATUS_SEQ;
+  scheduleFDCachePersist();
+}
+function syncFDSeq() {
+  if (typeof window === 'undefined') return;
+  if (typeof window.__FDStatusSeq === 'number' && window.__FDStatusSeq > FD_STATUS_SEQ) {
+    FD_STATUS_SEQ = window.__FDStatusSeq;
+  } else {
+    window.__FDStatusSeq = FD_STATUS_SEQ;
+  }
+}
+if (typeof window !== 'undefined') window.syncFDSeq = syncFDSeq;
+
+function setFDStatus(key, val) {
+  FD_STATUS_CACHE[key] = val; // true or false (404 negatives kept)
+  touchFD(key);
+  maybePruneFD();
+}
+// Prune oldest boolean entries to cap size.
+function maybePruneFD(limit = 2000, buffer = 50) {
+  try {
+    const keys = Object.keys(FD_STATUS_CACHE).filter(k => typeof FD_STATUS_CACHE[k] === 'boolean');
+    if (keys.length <= limit + buffer) return;
+    // Build array of [key, seq]
+    const arr = keys.map(k => [k, FD_STATUS_LRU[k] || 0]);
+    // Sort by seq descending (newest first)
+    arr.sort((a,b)=>b[1]-a[1]);
+    const toKeep = new Set(arr.slice(0, limit).map(x=>x[0]));
+    for (const [k] of arr.slice(limit)) {
+      delete FD_STATUS_CACHE[k];
+      delete FD_STATUS_LRU[k];
+      delete FD_STATUS_TS[k];
+    }
+  } catch {}
+}
+// Expose manual prune
+if (typeof window !== 'undefined') window.pruneFDCache = () => maybePruneFD();
+if (typeof window !== 'undefined') {
+  window.__FDStatusLRU = FD_STATUS_LRU;
+  if (window.__FDStatusSeq == null) window.__FDStatusSeq = FD_STATUS_SEQ;
+}
+
 // Unified: getWordDefinitionAPI returns { found, error, data } 
 // Also seeds FD_STATUS_CACHE (boolean) so optimizer/game benefit from drawer lookups.
 async function getWordDefinitionAPI(word) {
@@ -30,14 +206,14 @@ async function getWordDefinitionAPI(word) {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
       if (response.status === 404) {
-        FD_STATUS_CACHE[upper] = false; // definitive miss
+        setFDStatus(upper, false); // definitive miss
         return { found:false, error:false, data:null };
       }
       return { found:false, error:true, data:null }; // transient
     }
     const json = await response.json();
     const ok = Array.isArray(json) && json.length > 0;
-    FD_STATUS_CACHE[upper] = ok; // seed boolean cache
+    setFDStatus(upper, ok); // seed boolean cache with touch
     return { found: ok, error:false, data: ok ? json : null };
   } catch {
     return { found:false, error:true, data:null }; // do not seed cache on error
@@ -82,13 +258,14 @@ async function validateWordAPIBatch(displayWords) {
       const prom = (async () => {
         try {
           const { error, found } = await getWordDefinitionAPI(pw);
-          if (error) return true;
+          if (error) return true; // treat network error as usable (do not penalize plays)
           return !!found;
         } catch { return true; }
       })();
       sharedCache[key] = prom;
       const resolved = await prom;
       sharedCache[key] = resolved;
+      if (typeof resolved === 'boolean') touchFD(key);
     });
     await Promise.all(fetchPromises);
   }
@@ -103,14 +280,6 @@ async function validateWordAPIBatch(displayWords) {
   }
   return { validPlain, invalidPlain };
 }
-
-// Shared Free Dictionary API status cache (boolean values). Populated by both game & solver.
-const FD_STATUS_CACHE = (typeof window !== 'undefined' && window.__FDStatusCache)
-  ? window.__FDStatusCache
-  : Object.create(null);
-if (typeof window !== 'undefined') window.__FDStatusCache = FD_STATUS_CACHE;
-
-// Removed batch validator (moved to game.js as validateWordAPIBatch)
 
 // ---------- utils ----------
 function esc(s='') {
@@ -292,4 +461,27 @@ function renderOnlineDict(word, apiJson, {senseLimit=3} = {}) {
   if (box) box.innerHTML = html;
   wrap?.classList.remove('hidden');
 }
+
+if (typeof window !== 'undefined') window.getFDCacheStats = function() {
+  const now = Date.now();
+  const words = Object.keys(FD_STATUS_CACHE).filter(k => typeof FD_STATUS_CACHE[k] === 'boolean');
+  let pos=0, neg=0, oldest=Infinity, newest=0;
+  words.forEach(k => {
+    (FD_STATUS_CACHE[k] ? pos++ : neg++);
+    const ts = FD_STATUS_TS[k] || 0;
+    if (ts && ts < oldest) oldest = ts;
+    if (ts && ts > newest) newest = ts;
+  });
+  return {
+    total: words.length,
+    positives: pos,
+    negatives: neg,
+    oldestTimestamp: isFinite(oldest)? oldest : null,
+    newestTimestamp: newest || null,
+    oldestAgeMs: isFinite(oldest)? (now - oldest) : null,
+    newestAgeMs: newest? (now - newest) : null,
+    seq: FD_STATUS_SEQ,
+    ttlMs: FD_CACHE_TTL_MS
+  };
+};
 

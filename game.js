@@ -60,31 +60,21 @@ let lastGameCompletedAllRounds = false; // track whether the prior game reached 
 let currentRoundDraftInputs = {}; // NEW: per-player in-progress text for current round
 
 // --- Persistence (localStorage) ---
-const Q_STORAGE_KEY = 'quiddlerGameStateV1';
+const Q_STORAGE_KEY = 'quiddlerGameStateV2'; // bumped from V1; legacy load removed
 let __suppressAutoSave = false; // guard to avoid recursive saves during load
 
 function serializeGameState() {
   if (!gameStarted || !players.length) return null;
-  // Limit FD cache size to avoid bloating localStorage
-  let fdCacheObj = {};
-  try {
-    const src = (typeof window !== 'undefined' && window.__FDStatusCache) || {};
-    const entries = Object.entries(src).filter(([,v]) => typeof v === 'boolean');
-    const LIMIT = 2000;
-    for (let i=0;i<entries.length && i<LIMIT;i++) {
-      const [k,v] = entries[i]; fdCacheObj[k] = v;
-    }
-  } catch {}
   const draft = (!gameOver && currentRoundDraftInputs && Object.keys(currentRoundDraftInputs).length)
     ? { roundNum: currentRound, inputs: currentRoundDraftInputs }
     : null;
   return {
-    version: 1,
+    version: 2,
     players: players.slice(),
     roundsData: roundsData.map(r => ({
       roundNum: r.roundNum,
       dealer: r.dealer || null,
-      finalized: r.finalized !== false, // default true for legacy
+      finalized: r.finalized !== false,
       submittedPlayers: Object.keys(r.submittedPlayers || {}),
       players: Object.fromEntries(Object.entries(r.players || {}).map(([p, arr]) => [p, arr.map(w => ({
         text: w.text,
@@ -101,11 +91,10 @@ function serializeGameState() {
     mostWordsPoints,
     gameOver,
     lastGameCompletedAllRounds,
-    startCards,            // NEW
-    maxRound,              // NEW (endCards)
-    dictSource,            // NEW
-    draftRound: draft,     // NEW
-    fdStatusCache: fdCacheObj // NEW
+    startCards,
+    maxRound,
+    dictSource,
+    draftRound: draft
   };
 }
 function saveGameState() {
@@ -126,7 +115,7 @@ function loadGameState() {
     const raw = localStorage.getItem(Q_STORAGE_KEY);
     if (!raw) return;
     const data = JSON.parse(raw);
-    if (!data || data.version !== 1) return;
+    if (!data || data.version !== 2) return; // only V2 supported
 
     __suppressAutoSave = true;
 
@@ -202,12 +191,6 @@ function loadGameState() {
     // Recompute (ensures scores and bonuses re-derived if logic changed)
     recalculateScores();
     updatePreviousRounds();
-
-    // Merge FD cache (booleans only)
-    try {
-      const cacheSrc = (typeof window !== 'undefined' && window.__FDStatusCache) || (globalThis.__FDStatusCache ||= {});
-      Object.entries(data.fdStatusCache || {}).forEach(([k,v]) => { if (typeof v === 'boolean') cacheSrc[k] = v; });
-    } catch {}
 
     if (gameOver) {
       // Re-show game over state & summary
