@@ -176,7 +176,7 @@ function buildRowValidationIssues(pdata, expectedCards) {
 
     // Short card count message only when mismatched
     if (Number.isFinite(expectedCards) && expectedCards > 0 && foundCount !== expectedCards) {
-      issues.push(`Cards: ${foundCount}`);
+      issues.push(`Total Cards: ${foundCount}`);
     }
 
     return issues;
