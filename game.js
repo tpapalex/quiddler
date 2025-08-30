@@ -763,7 +763,17 @@ function toggleChallenge(btn, e) {
   challengerDropdown.onchange = async function() {
     if (this.value === '') { this.remove(); return; }
     if (this.value !== 'null') wordObj.challenger = this.value;
+    // UPDATED: Gate API validation behind local dictionary presence.
     if (dictSource === 'api') {
+      const locallyValid = validateWordLocal(wordObj.text);
+      if (!locallyValid) {
+        // Immediately mark invalid; do not hit API for non-local words.
+        wordObj.state = 'invalid';
+        recalculateScores();
+        updatePreviousRounds();
+        this.remove();
+        return;
+      }
       wordObj.state = 'checking';
       updatePreviousRounds();
       try {
@@ -777,13 +787,15 @@ function toggleChallenge(btn, e) {
         } else {
           const { found, error } = await getWordDefinitionAPI(plain);
           if (error) {
-            wordObj.state = validateWordLocal(wordObj.text) ? 'valid' : 'invalid';
+            // On API error, fall back to local validity (already true here).
+            wordObj.state = 'valid';
           } else {
             wordObj.state = found ? 'valid' : 'invalid';
           }
         }
       } catch {
-        wordObj.state = validateWordLocal(wordObj.text) ? 'valid' : 'invalid';
+        // On unexpected failure, default to locally valid (conservative) result.
+        wordObj.state = 'valid';
       }
       recalculateScores();
       updatePreviousRounds();
