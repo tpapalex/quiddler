@@ -455,15 +455,17 @@ function setupRound() {
   const dealer = players[currentDealerIdx % players.length];
   document.getElementById('roundHeader').innerHTML = `Current Round <span class="text-gray-500 text-base font-medium ml-1">(${currentRound} cards)</span>`;
 
+  // UPDATED LAYOUT: grid with auto-sized first column (max-content), shared alignment
   document.getElementById('scoreInputs').innerHTML = `
     <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Round auto-advances after all players submit.</div>
-    ${players.map((player, i) => `
-      <div class="player-input-row mb-2 flex items-center gap-2">
-        <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-1.5" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
-        <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
-        <button type="button" class="submit-player-btn inline-flex items-center gap-1 px-2 py-1 text-sm font-medium rounded-md border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition" data-player="${player}" title="Submit all players' words">Submit</button>
-      </div>
-    `).join('')}`;
+    <div class="player-input-grid grid grid-cols-[max-content_1fr_max-content] gap-x-2 gap-y-2 items-center">
+      ${players.map((player, i) => `
+        <div class="player-input-row contents">
+          <label for="player-words-${i}" class="font-semibold shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-1.5" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
+          <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
+          <button type="button" class="submit-player-btn inline-flex items-center gap-1 px-2 py-1 text-sm font-medium rounded-md border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition" data-player="${player}" title="Submit all players' words">Submit</button>
+        </div>`).join('')}
+    </div>`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
   // Initialize tippy for dealer indicator (current round)
   if (window.tippy) {
@@ -478,63 +480,8 @@ function setupRound() {
       if (e.key === 'Enter') {
         e.preventDefault();
         if (!gameOver)
-          // UPDATED: Enter submits snapshot for ALL players (not just focused player)
           submitPlayerPlay();
       } else if (e.key === 'Tab') {
-        e.preventDefault();
-        const inputs = Array.from(document.querySelectorAll('.player-words'));
-        const idx = inputs.indexOf(inp);
-        if (idx !== -1) {
-          let nextIdx = e.shiftKey ? idx - 1 : idx + 1;
-          // Wrap-around
-            if (nextIdx < 0) nextIdx = inputs.length - 1;
-            if (nextIdx >= inputs.length) nextIdx = 0;
-          const next = inputs[nextIdx];
-          if (next) { next.focus(); next.select?.(); }
-        }
-      }
-    });
-  });
-  document.querySelectorAll('.submit-player-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (!gameOver) submitPlayerPlay(); // UPDATED: button submits ALL players
-    });
-  });
-  const firstInput = document.querySelector('.player-words');
-  if (firstInput) { firstInput.focus(); firstInput.select?.(); }
-  currentDealerIdx++;
-  currentRoundDraftInputs = {}; // NEW reset draft for new round
-  updateSkipVisibility(); // NEW
-}
-
-// NEW: Rebuild current round input UI from an existing unfinalized round (on reload)
-function rebuildInputsFromExistingRound(round) {
-  if (!round) return;
-  const dealer = round.dealer;
-  document.getElementById('roundHeader').innerHTML = `Current Round <span class=\"text-gray-500 text-base font-medium ml-1\">(${round.roundNum} cards)</span>`;
-  document.getElementById('scoreInputs').innerHTML = `
-    <div class="text-sm text-gray-500 mb-2">Round in progress. Edit & resubmit a single player as needed; challenges reset for that player's changed words. Enter submits just that player.</div>
-    ${players.map((player, i) => {
-      const existing = (round.players[player] || []).map(w=>w.text).join(' ');
-      return `
-      <div class=\"player-input-row mb-2 flex items-center gap-2\">
-        <label for=\"player-words-${i}\" class=\"font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-1.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
-        <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\">
-        <button type=\"button\" class=\"submit-player-btn inline-flex items-center gap-1 px-2 py-1 text-sm font-medium rounded-md border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition\" data-player=\"${player}\" title=\"Submit all players' words\">Submit</button>
-      </div>`;
-    }).join('')}`;
-  document.getElementById('scoreInputs')?.classList.remove('hidden');
-  if (window.tippy) {
-    document.querySelectorAll('#scoreInputs .dealer-indicator').forEach(el => {
-      el.removeAttribute('title');
-      const cfg = { delay:[500,0], animation:'none', placement:'bottom', theme:'plain', arrow:false, offset:[0,6] };
-      if (!el._tippy) tippy(el, cfg); else el._tippy.setProps(cfg);
-    });
-  }
-  document.querySelectorAll('.player-words').forEach(inp => {
-    inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); if (!gameOver) submitPlayerPlay(); } // UPDATED
-      else if (e.key === 'Tab') { // NEW: custom tab navigation for existing round inputs
         e.preventDefault();
         const inputs = Array.from(document.querySelectorAll('.player-words'));
         const idx = inputs.indexOf(inp);
@@ -549,10 +496,64 @@ function rebuildInputsFromExistingRound(round) {
     });
   });
   document.querySelectorAll('.submit-player-btn').forEach(btn => {
-    btn.addEventListener('click', () => { if (!gameOver) submitPlayerPlay(); }); // UPDATED
+    btn.addEventListener('click', () => {
+      if (!gameOver) submitPlayerPlay();
+    });
+  });
+  const firstInput = document.querySelector('.player-words');
+  if (firstInput) { firstInput.focus(); firstInput.select?.(); }
+  currentDealerIdx++;
+  currentRoundDraftInputs = {}; // NEW reset draft for new round
+  updateSkipVisibility(); // NEW
+}
+
+// NEW: Rebuild current round input UI from an existing unfinalized round (on reload)
+function rebuildInputsFromExistingRound(round) {
+  if (!round) return;
+  const dealer = round.dealer;
+  document.getElementById('roundHeader').innerHTML = `Current Round <span class=\"text-gray-500 text-base font-medium ml-1\">(${round.roundNum} cards)</span>`;
+  // UPDATED LAYOUT (same grid approach as setupRound)
+  document.getElementById('scoreInputs').innerHTML = `
+    <div class="text-sm text-gray-500 mb-2">Round in progress. Edit & resubmit a single player as needed; challenges reset for that player's changed words. Enter submits just that player.</div>
+    <div class="player-input-grid grid grid-cols-[max-content_1fr_max-content] gap-x-2 gap-y-2 items-center">
+      ${players.map((player, i) => {
+        const existing = (round.players[player] || []).map(w=>w.text).join(' ');
+        return `
+        <div class=\"player-input-row contents\">
+          <label for=\"player-words-${i}\" class=\"font-semibold shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-1.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
+          <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\">
+          <button type=\"button\" class=\"submit-player-btn inline-flex items-center gap-1 px-2 py-1 text-sm font-medium rounded-md border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition\" data-player=\"${player}\" title=\"Submit all players' words\">Submit</button>
+        </div>`;}).join('')}
+    </div>`;
+  document.getElementById('scoreInputs')?.classList.remove('hidden');
+  if (window.tippy) {
+    document.querySelectorAll('#scoreInputs .dealer-indicator').forEach(el => {
+      el.removeAttribute('title');
+      const cfg = { delay:[500,0], animation:'none', placement:'bottom', theme:'plain', arrow:false, offset:[0,6] };
+      if (!el._tippy) tippy(el, cfg); else el._tippy.setProps(cfg);
+    });
+  }
+  document.querySelectorAll('.player-words').forEach(inp => {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); if (!gameOver) submitPlayerPlay(); }
+      else if (e.key === 'Tab') {
+        e.preventDefault();
+        const inputs = Array.from(document.querySelectorAll('.player-words'));
+        const idx = inputs.indexOf(inp);
+        if (idx !== -1) {
+          let nextIdx = e.shiftKey ? idx - 1 : idx + 1;
+          if (nextIdx < 0) nextIdx = inputs.length - 1;
+          if (nextIdx >= inputs.length) nextIdx = 0;
+          const next = inputs[nextIdx];
+          if (next) { next.focus(); next.select?.(); }
+        }
+      }
+    });
+  });
+  document.querySelectorAll('.submit-player-btn').forEach(btn => {
+    btn.addEventListener('click', () => { if (!gameOver) submitPlayerPlay(); });
   });
   currentRoundDraftInputs = Object.assign({}, currentRoundDraftInputs); // ensure object
-  // Reapply any draft into inputs (players not yet submitted)
   setTimeout(() => {
     Object.entries(currentRoundDraftInputs).forEach(([p,val]) => {
       const r = roundsData.find(r=>r.roundNum===round.roundNum && r.finalized===false);
