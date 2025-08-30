@@ -469,6 +469,18 @@ function setupRound() {
       if (e.key === 'Enter') {
         e.preventDefault();
         if (!gameOver) submitPlayerPlay(inp.dataset.player);
+      } else if (e.key === 'Tab') { // NEW: custom tab navigation across player inputs (skip submit buttons)
+        e.preventDefault();
+        const inputs = Array.from(document.querySelectorAll('.player-words'));
+        const idx = inputs.indexOf(inp);
+        if (idx !== -1) {
+          let nextIdx = e.shiftKey ? idx - 1 : idx + 1;
+          // Wrap-around
+            if (nextIdx < 0) nextIdx = inputs.length - 1;
+            if (nextIdx >= inputs.length) nextIdx = 0;
+          const next = inputs[nextIdx];
+          if (next) { next.focus(); next.select?.(); }
+        }
       }
     });
   });
@@ -510,6 +522,18 @@ function rebuildInputsFromExistingRound(round) {
   document.querySelectorAll('.player-words').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); if (!gameOver) submitPlayerPlay(inp.dataset.player); }
+      else if (e.key === 'Tab') { // NEW: custom tab navigation for existing round inputs
+        e.preventDefault();
+        const inputs = Array.from(document.querySelectorAll('.player-words'));
+        const idx = inputs.indexOf(inp);
+        if (idx !== -1) {
+          let nextIdx = e.shiftKey ? idx - 1 : idx + 1;
+          if (nextIdx < 0) nextIdx = inputs.length - 1;
+          if (nextIdx >= inputs.length) nextIdx = 0;
+          const next = inputs[nextIdx];
+          if (next) { next.focus(); next.select?.(); }
+        }
+      }
     });
   });
   document.querySelectorAll('.submit-player-btn').forEach(btn => {
