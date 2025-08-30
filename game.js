@@ -270,7 +270,7 @@ function startGame() {
 
   // Ensure submit button is enabled for a fresh game
   const submitBtn = document.getElementById('submitRoundBtn');
-  if (submitBtn) submitBtn.disabled = false;
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('hidden'); }
 
   // Make sure round inputs are visible when starting anew
   document.getElementById('scoreInputs')?.classList.remove('hidden');
@@ -907,6 +907,10 @@ function resetToPreGame() {
   const rh = document.getElementById('roundHeader'); if (rh) rh.innerText = '';
   const si = document.getElementById('scoreInputs'); if (si) si.innerHTML = '';
 
+  // Restore running totals header label for next game
+  const runHdr = document.getElementById('runningTotalsHeader');
+  if (runHdr) runHdr.textContent = 'Running Totals';
+
   // Toggle visibility
   document.getElementById('gameArea')?.classList.add('hidden');
   document.getElementById('preGameConfig')?.classList.remove('hidden');
@@ -932,7 +936,7 @@ function resetToPreGame() {
 
   // Ensure submit is enabled for the next game
   const submitBtn = document.getElementById('submitRoundBtn');
-  if (submitBtn) submitBtn.disabled = false;
+  if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('hidden'); }
 
   // Hide section headers
   document.getElementById('runningTotalsHeader')?.classList.add('hidden');
@@ -946,63 +950,29 @@ function resetToPreGame() {
   try { localStorage.removeItem(Q_STORAGE_KEY); } catch {}
 }
 
-// Show end-of-game summary modal and disable further input
+// Show end-of-game state inline (no modal) and disable further input
 function endGame(completedAllRounds = false) {
   gameOver = true;
   lastGameCompletedAllRounds = !!completedAllRounds;
   const submitBtn = document.getElementById('submitRoundBtn');
-  if (submitBtn) submitBtn.disabled = true;
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('hidden'); }
 
   // Remove and hide current round inputs so Enter can't submit new rounds
   const inputs = document.getElementById('scoreInputs');
   if (inputs) { inputs.innerHTML = ''; inputs.classList.add('hidden'); }
   const header = document.getElementById('roundHeader');
-  if (header) header.textContent = 'Game Over';
+  if (header) header.textContent = 'Game Over 🎉';
+  
+  // Rename Running Totals header to Final Scores
+  const runHdr = document.getElementById('runningTotalsHeader');
+  if (runHdr) runHdr.textContent = 'Final Scores';
 
-  // Build summary HTML
-  const list = Object.entries(scores)
-    .map(([player, score]) => ({ player, score }))
-    .sort((a, b) => b.score - a.score)
-    .map(({player, score}, idx) => `<li class="mb-1"><strong>${player}</strong> — ${score} points</li>`) 
-    .join('');
-  const summaryHTML = `
-    <div class="mb-2">Rounds played: ${roundsData.length}</div>
-    <ol class="list-decimal pl-6">${list}</ol>
-  `;
-  const summaryEl = document.getElementById('endGameSummary');
-  if (summaryEl) summaryEl.innerHTML = summaryHTML;
+  // Ensure totals are visible
+  document.getElementById('runningTotalsHeader')?.classList.remove('hidden');
+  document.getElementById('scoreTotals')?.classList.remove('hidden');
 
-  const modal = document.getElementById('endGameModal');
-  setElementVisible(modal, true);
-
-  // Arm Enter-to-new-game after a short delay to avoid catching the submit Enter
-  modal.__enterArmTime = (typeof performance !== 'undefined' ? performance.now() : Date.now()) + 350;
-
-  // Allow closing by clicking outside the panel or pressing Escape
-  const clickHandler = (e) => {
-    if (e.target === modal) closeEndGameDialog();
-  };
-  const escHandler = (e) => {
-    if (e.key === 'Escape') closeEndGameDialog();
-  };
-  modal.__clickToClose = clickHandler;
-  modal.addEventListener('click', clickHandler);
-  modal.__escToClose = escHandler;
-  document.addEventListener('keydown', escHandler);
-
-  // NEW: Press Enter to start a brand new game (not same settings)
-  const enterNewHandler = (e) => {
-    // Ignore key repeats and only arm after initial delay to prevent auto-advance
-    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-    const armed = !modal.__enterArmTime || now >= modal.__enterArmTime;
-    if (e.key === 'Enter' && !e.repeat && armed) {
-      e.preventDefault();
-      closeEndGameDialog();
-      resetToPreGame();
-    }
-  };
-  modal.__enterNewGame = enterNewHandler;
-  document.addEventListener('keydown', enterNewHandler);
+  // (Modal removed — previously summary + new game options displayed here.)
+  saveGameState();
 }
 
 function closeEndGameDialog() {
@@ -1085,13 +1055,8 @@ function closeEndGameDialog() {
   }
 
   function globalShortcutHelpHandler(e){
-    // Cmd/Ctrl + / opens/closes shortcuts
-    if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === '/' || e.key === '?')) {
-      e.preventDefault();
-      toggleShortcutModal();
-      return;
-    }
-    if (e.key === 'Escape') hideShortcutModal();
+    // Removed Cmd/Ctrl + / handling here to avoid double toggle (now handled in index.html bootstrap script)
+    if (e.key === 'Escape') window.QuiddlerHideShortcuts?.();
   }
   document.addEventListener('keydown', globalShortcutHelpHandler);
 })();

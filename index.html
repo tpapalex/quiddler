@@ -82,7 +82,6 @@
             <div class="mt-3 flex items-center gap-2">
               <button id="submitRoundBtn" class="bg-blue-500 text-white py-2 px-4 rounded">Submit Round</button>
               <button id="newGameBtn" class="bg-blue-500 text-white py-2 px-4 rounded">New Game</button>
-              <button id="endGameBtn" class="bg-red-600 text-white py-2 px-4 rounded hidden">End Game</button>
             </div>
 
             <!-- Overall summary -->
@@ -247,27 +246,15 @@
       </div>
     </aside>
 
-    <!-- End Game Summary Modal -->
-    <div id="endGameModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
-      <div class="bg-white rounded-lg shadow-lg w-full max-w-lg p-4">
-        <h3 class="text-xl font-semibold mb-3">Game Over</h3>
-        <div id="endGameSummary" class="mb-4 text-sm"></div>
-        <div class="flex justify-end gap-2">
-          <button id="endModalCloseBtn" class="px-4 py-2 rounded border">Close</button>
-          <button id="endModalNewBtn" class="px-4 py-2 rounded bg-blue-600 text-white">New Game</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Keyboard Shortcuts Modal -->
-    <div id="shortcutModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50">
+    <!-- Keyboard Shortcuts Modal (restored) -->
+    <div id="shortcutModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="shortcutModalTitle">
       <div class="bg-white rounded-lg shadow-lg p-5 w-[420px] text-sm">
-        <h3 class="font-semibold mb-3">Keyboard Shortcuts</h3>
+        <h3 id="shortcutModalTitle" class="font-semibold mb-3">Keyboard Shortcuts</h3>
         <ul class="space-y-1 leading-5">
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + Enter</span> New game</li>
-          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + E</span> End game</li>
+          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + E</span> End game early</li>
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + I</span> Open dictionary</li>
-          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + O</span> Open solver</li>
+            <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + O</span> Open solver</li>
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + /</span> Toggle this panel</li>
         </ul>
         <div class="mt-4 text-right">
@@ -318,54 +305,28 @@
         (window.QuiddlerGame?.resetToPreGame)?.();
       });
 
-      // End game button
-      document.getElementById('endGameBtn')?.addEventListener('click', () => {
-        (window.QuiddlerGame?.endGame)?.();
-      });
-
-      // End game modal buttons
-      document.getElementById('endModalCloseBtn')?.addEventListener('click', () => {
-        (window.QuiddlerGame?.closeEndGameDialog)?.();
-      });
-      document.getElementById('endModalNewBtn')?.addEventListener('click', () => {
-        (window.QuiddlerGame?.closeEndGameDialog)?.();
-        (window.QuiddlerGame?.resetToPreGame)?.();
-      });
-
-      // Shortcut modal toggle
-      function toggleShortcutModal() {
+      // Simplified shortcut modal toggle (single source of truth)
+      (function(){
         const modal = document.getElementById('shortcutModal');
-        const isHidden = modal.classList.contains('hidden');
-        modal.classList.toggle('hidden', !isHidden);
-        modal.classList.toggle('flex', isHidden);
-        if (isHidden) {
-          modal.focus();
+        function show(){ if(!modal) return; modal.classList.remove('hidden'); modal.classList.add('flex'); }
+        function hide(){ if(!modal) return; modal.classList.add('hidden'); modal.classList.remove('flex'); }
+        function toggle(force){
+          if(!modal) return;
+          const doShow = force === true ? true : force === false ? false : modal.classList.contains('hidden');
+          doShow ? show() : hide();
         }
-      }
-
-      // NEW: Close button handler for the shortcuts modal
-      document.getElementById('shortcutCloseBtn')?.addEventListener('click', () => {
-        // Prefer the namespaced helper if available
-        if (window.QuiddlerHideShortcuts) {
-          window.QuiddlerHideShortcuts();
-        } else {
-          const modal = document.getElementById('shortcutModal');
-          modal?.classList.add('hidden');
-          modal?.classList.remove('flex');
-        }
-      });
-
-      // Global keydown listener for shortcuts
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          // Close modals on Escape
-          document.getElementById('shortcutModal').classList.add('hidden');
-        } else if (e.key === '?' && !document.getElementById('shortcutModal').classList.contains('hidden')) {
-          // Toggle shortcut modal with ?
-          e.preventDefault();
-          toggleShortcutModal();
-        }
-      });
+        window.QuiddlerToggleShortcuts = toggle;
+        window.QuiddlerHideShortcuts = hide;
+        document.getElementById('shortcutCloseBtn')?.addEventListener('click', hide);
+        document.addEventListener('keydown', (e) => {
+          if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === '/' || e.key === '?')) {
+            e.preventDefault();
+            toggle();
+          } else if (e.key === 'Escape') {
+            hide();
+          }
+        });
+      })();
 
       // Ensure initial focus sticks on pre-game players input
       function focusPlayersIfPreGame() {
