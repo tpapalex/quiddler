@@ -57,6 +57,7 @@ let lastGameCompletedAllRounds = false; // track whether the prior game reached 
 //   finalized: boolean (default true for legacy rounds / when all players submitted)
 //   submittedPlayers: { [playerName]: true }
 // We create the round on first player submission and keep adding/replacing rows until all submit.
+let currentRoundDraftInputs = {}; // NEW: per-player in-progress text for current round
 
 // --- Persistence (localStorage) ---
 const Q_STORAGE_KEY = 'quiddlerGameStateV1';
@@ -64,6 +65,19 @@ let __suppressAutoSave = false; // guard to avoid recursive saves during load
 
 function serializeGameState() {
   if (!gameStarted || !players.length) return null;
+  // Limit FD cache size to avoid bloating localStorage
+  let fdCacheObj = {};
+  try {
+    const src = (typeof window !== 'undefined' && window.__FDStatusCache) || {};
+    const entries = Object.entries(src).filter(([,v]) => typeof v === 'boolean');
+    const LIMIT = 2000;
+    for (let i=0;i<entries.length && i<LIMIT;i++) {
+      const [k,v] = entries[i]; fdCacheObj[k] = v;
+    }
+  } catch {}
+  const draft = (!gameOver && currentRoundDraftInputs && Object.keys(currentRoundDraftInputs).length)
+    ? { roundNum: currentRound, inputs: currentRoundDraftInputs }
+    : null;
   return {
     version: 1,
     players: players.slice(),
@@ -89,7 +103,9 @@ function serializeGameState() {
     lastGameCompletedAllRounds,
     startCards,            // NEW
     maxRound,              // NEW (endCards)
-    dictSource             // NEW
+    dictSource,            // NEW
+    draftRound: draft,     // NEW
+    fdStatusCache: fdCacheObj // NEW
   };
 }
 function saveGameState() {
@@ -134,6 +150,9 @@ function loadGameState() {
     startCards = +data.startCards || 3;
     maxRound = +data.maxRound || 10;
     dictSource = data.dictSource === 'api' ? 'api' : 'local';
+    // NEW: restore draft inputs (only if not gameOver later)
+    currentRoundDraftInputs = (data.draftRound && typeof data.draftRound === 'object') ? (data.draftRound.roundNum === data.currentRound ? (data.draftRound.inputs || {}) : {}) : {};
+    const __restoredDraftCopy = { ...currentRoundDraftInputs }; // preserve before setupRound() may clear
     currentDealerIdx = data.currentDealerIdx || 0;
     longestWordBonus = !!data.longestWordBonus;
     mostWordsBonus = !!data.mostWordsBonus;
@@ -184,6 +203,12 @@ function loadGameState() {
     recalculateScores();
     updatePreviousRounds();
 
+    // Merge FD cache (booleans only)
+    try {
+      const cacheSrc = (typeof window !== 'undefined' && window.__FDStatusCache) || (globalThis.__FDStatusCache ||= {});
+      Object.entries(data.fdStatusCache || {}).forEach(([k,v]) => { if (typeof v === 'boolean') cacheSrc[k] = v; });
+    } catch {}
+
     if (gameOver) {
       // Re-show game over state & summary
       endGame(lastGameCompletedAllRounds);
@@ -198,7 +223,19 @@ function loadGameState() {
         rebuildInputsFromExistingRound(last);
       } else {
         setupRound();
+        // Reapply preserved draft inputs AFTER setupRound cleared them
+        currentRoundDraftInputs = __restoredDraftCopy;
       }
+      // After building inputs, apply any draft text for players not yet submitted (and without existing row words)
+      try {
+        const roundDraft = __restoredDraftCopy; // use preserved copy
+        Object.entries(roundDraft).forEach(([p,val]) => {
+          const inp = document.querySelector(`.player-words[data-player="${p}"]`);
+            if (inp && (!roundsData.find(r=>r.roundNum===currentRound && r.finalized===false)?.submittedPlayers[p])) {
+              if (!inp.value || inp.value.trim() === '') inp.value = val;
+            }
+        });
+      } catch {}
     }
     // Ensure headers visibility on restored game
     const hasRounds = roundsData.length > 0;
@@ -362,6 +399,7 @@ function setupRound() {
   const firstInput = document.querySelector('.player-words');
   if (firstInput) { firstInput.focus(); firstInput.select?.(); }
   currentDealerIdx++;
+  currentRoundDraftInputs = {}; // NEW reset draft for new round
 }
 
 // NEW: Rebuild current round input UI from an existing unfinalized round (on reload)
@@ -389,6 +427,17 @@ function rebuildInputsFromExistingRound(round) {
   document.querySelectorAll('.submit-player-btn').forEach(btn => {
     btn.addEventListener('click', () => { if (!gameOver) submitPlayerPlay(btn.dataset.player); });
   });
+  currentRoundDraftInputs = Object.assign({}, currentRoundDraftInputs); // ensure object
+  // Reapply any draft into inputs (players not yet submitted)
+  setTimeout(() => {
+    Object.entries(currentRoundDraftInputs).forEach(([p,val]) => {
+      const r = roundsData.find(r=>r.roundNum===round.roundNum && r.finalized===false);
+      if (r && !r.submittedPlayers[p]) {
+        const inp = document.querySelector(`.player-words[data-player="${p}"]`);
+        if (inp && (inp.value.trim()==='')) inp.value = val;
+      }
+    });
+  },0);
 }
 
 // PARTIAL ROUND: per-player submission
@@ -418,6 +467,8 @@ function submitPlayerPlay(playerName) {
   }));
   // Mark submitted even if blank (explicit clear). Blank wipes prior words.
   round.submittedPlayers[playerName] = true;
+  // Clear draft for submitted player
+  delete currentRoundDraftInputs[playerName];
 
   recalculateScores(); // dynamic bonuses allowed
   updatePreviousRounds();
@@ -965,6 +1016,7 @@ function resetToPreGame() {
   maxRound = 10;       // NEW
   roundsData = [];
   currentDealerIdx = 0;
+  currentRoundDraftInputs = {}; // NEW clear drafts
 
   // Clear dynamic UI
   document.getElementById('scoreTotals').innerHTML = '';
@@ -1037,6 +1089,7 @@ function endGame(completedAllRounds = false) {
   document.getElementById('scoreTotals')?.classList.remove('hidden');
 
   // (Modal removed — previously summary + new game options displayed here.)
+  currentRoundDraftInputs = {}; // NEW clear drafts
   saveGameState();
 }
 
@@ -1125,3 +1178,23 @@ function closeEndGameDialog() {
   }
   document.addEventListener('keydown', globalShortcutHelpHandler);
 })();
+
+// Attach draft persistence listeners (helper)
+function attachDraftListeners() {
+  document.querySelectorAll('.player-words').forEach(inp => {
+    inp.addEventListener('input', () => {
+      if (gameOver) return;
+      const player = inp.dataset.player;
+      if (!player) return;
+      currentRoundDraftInputs[player] = inp.value;
+      saveGameState();
+    });
+  });
+}
+// Call after UI creations
+// Patch setupRound and rebuildInputsFromExistingRound invocation sites by appending attachDraftListeners
+// (Simplest: observe DOM mutations after a tick)
+const __observer = new MutationObserver(() => {
+  if (document.querySelector('.player-words') && !gameOver) attachDraftListeners();
+});
+__observer.observe(document.getElementById('scoreInputs') || document.body, { childList:true, subtree:true });
