@@ -173,13 +173,13 @@ function buildRowValidationIssues(pdata, expectedCards) {
       // raw unmatched fragments
       ...unmatchedFragments
     ]));
+
+    // Instead of pushing invalid first then total mismatch, push total mismatch first so it appears above
+    if (Number.isFinite(expectedCards) && expectedCards > 0 && foundCount !== expectedCards && foundCount > 0) {
+      issues.push(`Total cards: ${foundCount} (≠ ${expectedCards})`);
+    }
     if (invalidItems.length) {
       issues.push(`Invalid cards: ${invalidItems.join(', ')}`);
-    }
-
-    // Short card count message only when mismatched AND at least one card/fragment present (avoid flag on intentional blank submission)
-    if (Number.isFinite(expectedCards) && expectedCards > 0 && foundCount !== expectedCards && foundCount > 0) {
-      issues.push(`Total Cards: ${foundCount}`);
     }
 
     return issues;
@@ -207,14 +207,26 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedC
 
   let issues = [];
   if (isNoSubmission) {
-    issues = ['No submission'];
+    // Suppress for current unfinalized (in-progress) round; show for finalized rounds
+    if (!(round && round.finalized === false)) {
+      issues = ['No submission'];
+    }
   } else {
     issues = buildRowValidationIssues(pdata, expectedCards);
   }
 
-  const valHTML = issues.length
-    ? `<span class="text-red-600 text-xs cursor-help row-val-flag" data-tippy-content="${issues.map(escapeHtml).join('<br/>')}" title="">🚩</span>`
-    : '';
+  const valHTML = (() => {
+    if (!issues.length) return '';
+    const htmlPieces = issues.map(issue => {
+      const escaped = escapeHtml(issue);
+      if (/^Total Cards: /.test(issue)) {
+        // Highlight only the parenthetical mismatch portion (use single quotes to avoid breaking attribute quoting)
+        return escaped.replace(/\(≠ [0-9]+\)$/,"<span class='text-gray-500'>$&</span>");
+      }
+      return escaped;
+    });
+    return `<span class="text-red-600 text-xs cursor-help row-val-flag" data-tippy-content="${htmlPieces.join('<br/>')}" title="">🚩</span>`;
+  })();
 
   const controls = interactive ? renderRowControls(roundIdx, player, valHTML) : '';
 

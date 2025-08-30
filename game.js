@@ -741,7 +741,11 @@ function prefillPlayFor(roundIdx, playerName, e) {
  * Switch a player's row to edit mode (inline editing of chits as text).
  */
 function enterEditMode(player, roundIdx, btn) {
+  // NEW: enforce single edit mode
   const row = btn.closest('.group');
+  if (!row) return;
+  // Close any other open edit rows first
+  closeAllEditModes(row);
   const cell = row.querySelector('.row-chits-cell') || row.querySelector('.flex-1.min-w-0');
   if (!cell) return;
 
@@ -761,19 +765,62 @@ function enterEditMode(player, roundIdx, btn) {
   chits?.classList.add('hidden');
   edit.classList.remove('hidden');
 
+  // HIDE validation flag while editing
+  row.querySelector('.row-val-flag')?.classList.add('hidden');
+
   const input = edit.querySelector('.edit-input');
   if (input) {
     input.focus();
     const v = input.value; input.value = ''; input.value = v;
 
-    input.addEventListener('keydown', function handler(e) {
+    function keyHandler(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
         saveEdit(player, roundIdx, btn);
-        input.removeEventListener('keydown', handler);
+        input.removeEventListener('keydown', keyHandler);
+      } else if (e.key === 'Escape') { // NEW: Escape cancels edit
+        e.preventDefault();
+        e.stopPropagation();
+        const cancelBtn = row.querySelector('[data-action="cancel-edit"][data-player="'+player+'"][data-round="'+roundIdx+'"]');
+        if (cancelBtn) {
+          cancelEdit(cancelBtn);
+        } else {
+          // Fallback if cancel button not found (should not happen)
+          chits?.classList.remove('hidden');
+          edit.classList.add('hidden');
+          const viewC = row.querySelector('.controls-view-mode');
+          const editC = row.querySelector('.controls-edit-mode');
+          editC?.classList.add('hidden');
+          viewC?.classList.remove('hidden');
+          // RESTORE validation flag
+          row.querySelector('.row-val-flag')?.classList.remove('hidden');
+        }
+        input.removeEventListener('keydown', keyHandler);
       }
-    });
+    }
+    input.addEventListener('keydown', keyHandler);
   }
+}
+
+// NEW: helper to close all other edit modes (used for single edit mode enforcement)
+function closeAllEditModes(exceptRow) {
+  document.querySelectorAll('.group .edit-container:not(.hidden)').forEach(editContainer => {
+    const row = editContainer.closest('.group');
+    if (exceptRow && row === exceptRow) return; // leave target row alone
+    const cancelBtn = row?.querySelector('[data-action="cancel-edit"]');
+    if (cancelBtn) {
+      cancelEdit(cancelBtn);
+    } else {
+      // fallback: manually revert UI
+      editContainer.classList.add('hidden');
+      row?.querySelector('.chit-container')?.classList.remove('hidden');
+      const controls = row?.querySelector('.controls-cell');
+      if (controls) {
+        controls.querySelector('.controls-edit-mode')?.classList.add('hidden');
+        controls.querySelector('.controls-view-mode')?.classList.remove('hidden');
+      }
+    }
+  });
 }
 
 function cancelEdit(btn) {
@@ -792,6 +839,8 @@ function cancelEdit(btn) {
     editC?.classList.add('hidden');
     viewC?.classList.remove('hidden');
   }
+  // RESTORE validation flag visibility
+  row.querySelector('.row-val-flag')?.classList.remove('hidden');
 }
 
 /**
@@ -821,6 +870,8 @@ function saveEdit(player, roundIdx, btn) {
 
   recalculateScores();
   updatePreviousRounds();
+
+  // After re-render, the edited row is no longer in edit mode; flag will reappear via fresh render if still applicable
 }
 
 /**
