@@ -80,7 +80,7 @@ function renderPlayerRowHeader(player, pdata, round) {
   const isDealer = round && round.dealer === player;
   const dealerEmoji = (typeof window !== 'undefined' && window.QuiddlerGame?.DEALER_EMOJI) ? window.QuiddlerGame.DEALER_EMOJI : '🃏';
   // Smaller emoji (0.85em) for historical rounds only (current round inputs use game.js markup unchanged)
-  const nameHTML = `${player}${isDealer ? `<span class=\"ml-0.5 align-middle\" style=\"font-size:0.85em; line-height:1; display:inline-block; transform:translateY(-1px);\" aria-label=\"Dealt this round\" title=\"Dealt this round\">${dealerEmoji}</span>` : ''}`;
+  const nameHTML = `${player}${isDealer ? `<span class=\"dealer-indicator ml-0.5 align-middle\" style=\"font-size:0.85em; line-height:1; display:inline-block; transform:translateY(-1px);\" aria-label=\"Deals this round\" data-tippy-content=\"Deals this round\">${dealerEmoji}</span>` : ''}`;
   const parts = [];
   parts.push(Math.max(pdata.baseScore, 0));
   if (pdata.challengeDeductions) parts.push(`- ${pdata.challengeDeductions}`);
@@ -89,7 +89,7 @@ function renderPlayerRowHeader(player, pdata, round) {
   const breakdown = parts.join(' ');
 
   return `
-    <span class="truncate min-w-0 flex-none max-w-[8ch] sm:justify-self-start" title="${player}">${nameHTML}</span>
+    <span class="truncate min-w-0 flex-none max-w-[8ch] sm:justify-self-start">${nameHTML}</span>
     <span class="tabular-nums text-right justify-self-end flex-none w-[4ch]">${pdata.roundScore}</span>
     <span class="text-gray-600 truncate min-w-0 flex-1 sm:flex-none sm:block"
           title="${(pdata.challengeDeductions || pdata.bonus) ? '('+breakdown+')' : ''}">
@@ -106,15 +106,14 @@ function renderRowControls(roundIdx, player, extraRightHTML = '') {
       <span class="flex items-center gap-1 flex-auto">
         <span class="controls-view-mode inline-flex items-center gap-1">
           <button data-action="edit" data-player="${player}" data-round="${roundIdx}"
-                  class="opacity-100 sm:opacity-0 group-hover:opacity-100 transition">✏️</button>
+                  class="plain-tip opacity-100 sm:opacity-0 group-hover:opacity-100 transition" data-tippy-content="Edit row">✏️</button>
           <button data-action="prefill-play" data-player="${player}" data-round="${roundIdx}"
-                  class="opacity-100 sm:opacity-0 group-hover:opacity-100 transition text-emerald-700 hover:text-emerald-900"
-                  title="Open Play Helper">⚙️</button>
+                  class="plain-tip opacity-100 sm:opacity-0 group-hover:opacity-100 transition text-emerald-700 hover:text-emerald-900" data-tippy-content="Open Play Helper">⚙️</button>
         </span>
         <span class="controls-edit-mode hidden inline-flex items-center gap-1">
           <button data-action="save-edit" data-player="${player}" data-round="${roundIdx}"
-                  class="opacity-100 transition" title="Save">✔️</button>
-          <button data-action="cancel-edit" class="opacity-100 transition" title="Cancel">❌</button>
+                  class="plain-tip opacity-100 transition" data-tippy-content="Save">✔️</button>
+          <button data-action="cancel-edit" class="plain-tip opacity-100 transition" data-tippy-content="Cancel">❌</button>
         </span>
       </span>
       <span class="flex-none ml-1">${extraRightHTML}</span>
@@ -272,7 +271,7 @@ window.__defOpenHover = false;
 
 function initChitTooltips(container = document) {
   if (typeof window === 'undefined' || !window.tippy) {
-    return { breakdownInstances: [], defInstances: [], valInstances: [] };
+    return { breakdownInstances: [], defInstances: [], valInstances: [], dealerInstances: [] };
   }
   // Two tippy groups:
   // - breakdownInstances on .breakdown-tip show letter-by-letter points
@@ -310,7 +309,27 @@ function initChitTooltips(container = document) {
     placement: 'top'
   });
 
-  return { breakdownInstances, defInstances, valInstances };
+  // NEW: dealer emoji tooltips (fast appearance)
+  const dealerInstances = tippy(container.querySelectorAll('.dealer-indicator'), {
+    delay: [500, 0],
+    animation: 'none',
+    placement: 'bottom',
+    theme: 'plain',
+    arrow: false,
+    offset: [0, 6]
+  });
+
+  // NEW: control emoji tooltips (edit/gear/save/cancel)
+  const controlInstances = tippy(container.querySelectorAll('.plain-tip'), {
+    delay: [500,0],
+    animation: 'none',
+    placement: 'bottom',
+    theme: 'plain',
+    arrow: false,
+    offset: [0,6]
+  });
+
+  return { breakdownInstances, defInstances, valInstances, dealerInstances, controlInstances };
 }
 
 function renderOptimizedPlayFromResult(containerId, result) {

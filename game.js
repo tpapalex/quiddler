@@ -432,12 +432,20 @@ function setupRound() {
     <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Submit each player individually; round auto-advances after all submitted. Enter submits just that player.</div>
     ${players.map((player, i) => `
       <div class="player-input-row mb-2 flex items-center gap-2">
-        <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-0.5" aria-label="Deals this round" title="Deals this round">${DEALER_EMOJI}</span>` : ''}</label>
+        <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-0.5" aria-label="Deals this round" data-tippy-content="Deals this round">${DEALER_EMOJI}</span>` : ''}</label>
         <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
         <button type="button" class="submit-player-btn px-2 py-1 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded" data-player="${player}" title="Submit ${player}'s play">Submit</button>
       </div>
     `).join('')}`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
+  // Initialize tippy for dealer indicator (current round)
+  if (window.tippy) {
+    document.querySelectorAll('#scoreInputs .dealer-indicator').forEach(el => {
+      el.removeAttribute('title');
+      const cfg = { delay:[500,0], animation:'none', placement:'bottom', theme:'plain', arrow:false, offset:[0,6] };
+      if (!el._tippy) tippy(el, cfg); else el._tippy.setProps(cfg);
+    });
+  }
   document.querySelectorAll('.player-words').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -468,12 +476,19 @@ function rebuildInputsFromExistingRound(round) {
       const existing = (round.players[player] || []).map(w=>w.text).join(' ');
       return `
       <div class=\"player-input-row mb-2 flex items-center gap-2\">
-        <label for=\"player-words-${i}\" class=\"font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-0.5\" aria-label=\"Deals this round\" title=\"Deals this round\">${DEALER_EMOJI}</span>` : ''}</label>
+        <label for=\"player-words-${i}\" class=\"font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-0.5\" aria-label=\"Deals this round\" data-tippy-content=\"Deals this round\">${DEALER_EMOJI}</span>` : ''}</label>
         <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\">
         <button type=\"button\" class=\"submit-player-btn px-2 py-1 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded\" data-player=\"${player}\" title=\"Submit ${player}'s play\">Submit</button>
       </div>`;
     }).join('')}`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
+  if (window.tippy) {
+    document.querySelectorAll('#scoreInputs .dealer-indicator').forEach(el => {
+      el.removeAttribute('title');
+      const cfg = { delay:[500,0], animation:'none', placement:'bottom', theme:'plain', arrow:false, offset:[0,6] };
+      if (!el._tippy) tippy(el, cfg); else el._tippy.setProps(cfg);
+    });
+  }
   document.querySelectorAll('.player-words').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); if (!gameOver) submitPlayerPlay(inp.dataset.player); }
@@ -1055,6 +1070,13 @@ if (typeof window !== 'undefined') {
     endCards:   { get() { return maxRound; } },        // NEW
     dictSource: { get() { return dictSource; } },      // NEW
   });
+
+  // NEW: expose a helper to clear only persisted caches (does not mutate in-memory state).
+  function clearGameCacheOnly() {
+    try { localStorage.removeItem(Q_STORAGE_KEY); } catch {}
+    try { localStorage.removeItem(Q_PRE_CONFIG_KEY); } catch {}
+  }
+  ns.clearGameCacheOnly = clearGameCacheOnly;
 
   window.QuiddlerGame = ns;
   // Add persistence helpers to namespace

@@ -10,8 +10,11 @@ function initToolsDrawer(){
   const drawer   = document.getElementById('toolsDrawer');
   const closeBtn = document.getElementById('toolsCloseBtn');
   const backdrop = document.getElementById('toolsBackdrop');
+  let closeFocusTimer = null; // NEW: track pending focus restore
 
   function openDrawer() {
+    // Cancel any pending focus restore from a prior close (Escape on shortcut modal etc.)
+    if (closeFocusTimer) { clearTimeout(closeFocusTimer); closeFocusTimer = null; }
     // Slide in drawer and fade in backdrop
     drawer.classList.remove('translate-x-full');
     backdrop.classList.remove('hidden');
@@ -41,8 +44,8 @@ function initToolsDrawer(){
     const onEnd = () => {
       backdrop.classList.add('hidden');
       backdrop.removeEventListener('transitionend', onEnd);
-      // After drawer closes, refocus the first empty player input (or playersInput if pre-game)
-      setTimeout(() => focusFirstEmptyPlayerInput(), 0);
+      // Schedule focus back ONLY if we really closed the drawer intentionally
+      closeFocusTimer = setTimeout(() => focusFirstEmptyPlayerInput(), 0);
     };
     backdrop.addEventListener('transitionend', onEnd);
   }
@@ -65,7 +68,13 @@ function initToolsDrawer(){
   document.addEventListener('keydown', (e) => {
     // Global shortcuts
     if (e.key === 'Escape') {
-      closeDrawer();
+      // If shortcut modal is open, ignore (modal handler will run). Only close drawer if actually open.
+      const sm = document.getElementById('shortcutModal');
+      const modalVisible = sm && !sm.classList.contains('hidden');
+      const drawerOpen = !drawer.classList.contains('translate-x-full');
+      if (!modalVisible && drawerOpen) {
+        closeDrawer();
+      }
       return;
     }
     const isAccel = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey;

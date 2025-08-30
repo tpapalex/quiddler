@@ -24,6 +24,10 @@
       @media (min-width: 640px) { /* sm */
         .player-input-row { grid-template-columns: 20ch 1fr; }
       }
+      /* Plain (native-like) tooltip theme for fast tippy tooltips */
+      .tippy-box[data-theme~='plain'] { background:#555; color:#fff; font-size:12px; line-height:1.2; padding:2px 4px; border-radius:2px; border:1px solid #777; box-shadow:none; }
+      .tippy-box[data-theme~='plain'] .tippy-content { padding:0; }
+      .tippy-box[data-theme~='plain'] .tippy-arrow { display:none !important; }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
@@ -248,8 +252,11 @@
 
     <!-- Keyboard Shortcuts Modal (restored) -->
     <div id="shortcutModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="shortcutModalTitle">
-      <div class="bg-white rounded-lg shadow-lg p-5 w-[420px] text-sm">
-        <h3 id="shortcutModalTitle" class="font-semibold mb-3">Keyboard Shortcuts</h3>
+      <div class="bg-white rounded-lg shadow-lg p-5 w-[420px] text-sm relative">
+        <div class="flex items-start mb-3">
+          <h3 id="shortcutModalTitle" class="font-semibold flex-1">Keyboard Shortcuts</h3>
+          <button id="shortcutCloseBtn" class="text-gray-500 hover:text-gray-700 text-xl leading-none -mt-1 -mr-1" aria-label="Close">✕</button>
+        </div>
         <ul class="space-y-1 leading-5">
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + Enter</span> New game</li>
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + E</span> End game early</li>
@@ -258,8 +265,14 @@
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + O</span> Open solver</li>
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + /</span> Toggle this panel</li>
         </ul>
-        <div class="mt-4 text-right">
-          <button id="shortcutCloseBtn" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded text-xs">Close (Esc)</button>
+        <!-- Bottom cache clear section with concise labels -->
+        <div class="mt-5 pt-3 border-t border-gray-100">
+          <div class="flex gap-2 items-center justify-start text-[11px]">
+            <span class="text-gray-500 select-none">Clear cache:</span>
+            <button id="clearDictCacheBtn" class="px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600" data-tippy-content="Clears cached dictionary information used for faster lookups">Dictionary</button>
+            <button id="clearGameCacheBtn" class="px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600" data-tippy-content="Clears cached game state used to persist plays after page reload">Game</button>
+          </div>
+          <div id="cacheClearFeedback" class="mt-2 text-[11px] text-emerald-600 text-right hidden"></div>
         </div>
       </div>
     </div>
@@ -305,6 +318,27 @@
       document.getElementById('skipRoundBtn')?.addEventListener('click', () => {
         (window.QuiddlerGame?.skipRound)?.();
       });
+
+      // Cache clearing buttons (shortcut modal)
+      (function(){
+        const feedback = document.getElementById('cacheClearFeedback');
+        function showMsg(msg){ if(!feedback) return; feedback.textContent = msg; feedback.classList.remove('hidden'); setTimeout(()=>feedback.classList.add('hidden'), 2200); }
+        document.getElementById('clearGameCacheBtn')?.addEventListener('click', () => {
+          window.QuiddlerGame?.clearGameCacheOnly?.();
+          showMsg('Game cache cleared');
+        });
+        document.getElementById('clearDictCacheBtn')?.addEventListener('click', () => {
+          window.clearFDCache?.();
+          showMsg('Dictionary cache cleared');
+        });
+        // Initialize tippy tooltips for cache buttons (faster than native title)
+        if (window.tippy) {
+          // Use unified plain tooltip style for cache buttons
+          const commonOpts = { placement:'bottom', animation:'none', delay:[500,0], theme:'plain', arrow:false, offset:[0,6] };
+          tippy('#clearDictCacheBtn', commonOpts);
+          tippy('#clearGameCacheBtn', commonOpts);
+        }
+      })();
 
       // Simplified shortcut modal toggle (single source of truth)
       (function(){
