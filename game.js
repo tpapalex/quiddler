@@ -461,7 +461,7 @@ function setupRound() {
     <div class="player-input-grid grid grid-cols-[max-content_1fr_max-content] gap-x-2 gap-y-2 items-center">
       ${players.map((player, i) => `
         <div class="player-input-row contents">
-          <label for="player-words-${i}" class="font-semibold shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-1.5" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
+          <label for="player-words-${i}" class="player-label shrink-0 whitespace-nowrap overflow-hidden text-ellipsis flex items-center rounded-md border border-gray-200/70 bg-white/60 backdrop-blur-sm px-2 py-1 text-gray-800 font-normal shadow-sm ring-1 ring-black/0 hover:bg-white/80 transition-colors">${player}${player === dealer ? `<span class="dealer-indicator ml-1" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
           <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
           <button type="button" class="submit-player-btn inline-flex items-center gap-1 px-2 py-1 text-sm font-medium rounded-md border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition" data-player="${player}" title="Submit all players' words">Submit</button>
         </div>`).join('')}
@@ -520,7 +520,7 @@ function rebuildInputsFromExistingRound(round) {
         const existing = (round.players[player] || []).map(w=>w.text).join(' ');
         return `
         <div class=\"player-input-row contents\">
-          <label for=\"player-words-${i}\" class=\"font-semibold shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-1.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
+          <label for=\"player-words-${i}\" class=\"player-label shrink-0 whitespace-nowrap overflow-hidden text-ellipsis flex items-center rounded-md border border-gray-200/70 bg-white/60 backdrop-blur-sm px-2 py-1 text-gray-800 font-normal shadow-sm ring-1 ring-black/0 hover:bg-white/80 transition-colors\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-1.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
           <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\">
           <button type=\"button\" class=\"submit-player-btn inline-flex items-center gap-1 px-2 py-1 text-sm font-medium rounded-md border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition\" data-player=\"${player}\" title=\"Submit all players' words\">Submit</button>
         </div>`;}).join('')}
