@@ -177,8 +177,8 @@ function buildRowValidationIssues(pdata, expectedCards) {
       issues.push(`Invalid cards: ${invalidItems.join(', ')}`);
     }
 
-    // Short card count message only when mismatched
-    if (Number.isFinite(expectedCards) && expectedCards > 0 && foundCount !== expectedCards) {
+    // Short card count message only when mismatched AND at least one card/fragment present (avoid flag on intentional blank submission)
+    if (Number.isFinite(expectedCards) && expectedCards > 0 && foundCount !== expectedCards && foundCount > 0) {
       issues.push(`Total Cards: ${foundCount}`);
     }
 
@@ -201,10 +201,19 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedC
   // Builds header, optional controls, list of chits and hidden edit block
   const header = renderPlayerRowHeader(player, pdata, round);
 
-  const issues = buildRowValidationIssues(pdata, expectedCards);
-  const tooltipHTML = issues.length ? issues.map(escapeHtml).join('<br/>') : '';
+  const hasSubmitted = !!(round && round.submittedPlayers && round.submittedPlayers[player]);
+  const isBlank = (pdata.length === 0);
+  const isNoSubmission = !hasSubmitted || isBlank; // treat blank submission same as no submission
+
+  let issues = [];
+  if (isNoSubmission) {
+    issues = ['No submission'];
+  } else {
+    issues = buildRowValidationIssues(pdata, expectedCards);
+  }
+
   const valHTML = issues.length
-    ? `<span class="text-red-600 text-xs cursor-help row-val-flag" data-tippy-content="${tooltipHTML}" title="">🚩</span>`
+    ? `<span class="text-red-600 text-xs cursor-help row-val-flag" data-tippy-content="${issues.map(escapeHtml).join('<br/>')}" title="">🚩</span>`
     : '';
 
   const controls = interactive ? renderRowControls(roundIdx, player, valHTML) : '';

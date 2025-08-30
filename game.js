@@ -154,7 +154,11 @@ function loadPreGameConfig() {
     const data = JSON.parse(raw);
     if (!data || data.v !== 1) return;
     __suppressPreConfigSave = true;
-    const p = document.getElementById('playersInput'); if (p && !p.disabled && data.playersRaw != null) p.value = data.playersRaw;
+    const p = document.getElementById('playersInput'); if (p && !p.disabled && data.playersRaw != null) {
+      // Normalize any stored list to comma+space style for display
+      const norm = data.playersRaw.split(',').map(x=>x.trim()).filter(Boolean).join(', ');
+      p.value = norm;
+    }
     const l = document.getElementById('longestWordBonus'); if (l && !l.disabled) l.checked = data.longestB;
     const m = document.getElementById('mostWordsBonus'); if (m && !m.disabled) m.checked = data.mostB;
     const lp = document.getElementById('longestWordPoints'); if (lp && !lp.disabled) lp.value = data.longestPts;
@@ -231,7 +235,7 @@ function loadGameState() {
 
     // Reflect UI controls
     const pInput = document.getElementById('playersInput');
-    if (pInput) { pInput.value = players.join(','); pInput.disabled = true; }
+    if (pInput) { pInput.value = players.join(', '); pInput.disabled = true; }
     const lCB = document.getElementById('longestWordBonus');
     const mCB = document.getElementById('mostWordsBonus');
     if (lCB) { lCB.checked = longestWordBonus; lCB.disabled = true; }
@@ -346,6 +350,10 @@ function startGame() {
     .map(p => p.trim())
     .filter(p => p.length > 0)
     .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase());
+
+  // Normalize players input display to include a space after commas
+  const pInputNorm = document.getElementById('playersInput');
+  if (pInputNorm) pInputNorm.value = players.join(', ');
 
   if (!players.length) {
     alert('Please enter at least one player');
@@ -1151,7 +1159,11 @@ function resetToPreGame() {
 
   // Focus player names input
   const p = document.getElementById('playersInput');
-  if (p) { p.focus(); p.select?.(); }
+  if (p && p.value) {
+    p.value = p.value.split(',').map(x=>x.trim()).filter(Boolean).join(', ');
+    p.focus(); 
+    p.select?.();
+  }
 
   // Ensure submit is enabled for the next game
   const submitBtn = document.getElementById('submitRoundBtn');
