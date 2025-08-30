@@ -61,6 +61,9 @@ let currentRoundDraftInputs = {}; // NEW: per-player in-progress text for curren
 
 // --- Persistence (localStorage) ---
 const Q_STORAGE_KEY = 'quiddlerGameStateV2'; // bumped from V1; legacy load removed
+// NEW: separate key to persist pre-game (new game page) options even if a game wasn't started yet.
+const Q_PRE_CONFIG_KEY = 'quiddlerPreGameConfigV1';
+let __suppressPreConfigSave = false; // guard to avoid feedback loops while programmatically setting inputs
 let __suppressAutoSave = false; // guard to avoid recursive saves during load
 
 function serializeGameState() {
@@ -110,6 +113,67 @@ function saveGameState() {
   } catch (e) {
     console.warn('Persist save failed', e);
   }
+}
+// NEW: Serialize current pre-game form values (only when not in an active game)
+function serializePreGameConfig() {
+  if (gameStarted) return null; // only store when on new game page
+  try {
+    const playersRaw = document.getElementById('playersInput')?.value || '';
+    const longestB = !!document.getElementById('longestWordBonus')?.checked;
+    const mostB = !!document.getElementById('mostWordsBonus')?.checked;
+    const longestPts = +(document.getElementById('longestWordPoints')?.value || 0) || 0;
+    const mostPts = +(document.getElementById('mostWordsPoints')?.value || 0) || 0;
+    const sc = +(document.getElementById('startCards')?.value || 3) || 3;
+    const ec = +(document.getElementById('endCards')?.value || 10) || 10;
+    const dictApiAlso = !!document.getElementById('dictApiAlso')?.checked;
+    return {
+      v: 1,
+      playersRaw,
+      longestB,
+      mostB,
+      longestPts,
+      mostPts,
+      sc,
+      ec,
+      dictApiAlso
+    };
+  } catch { return null; }
+}
+function savePreGameConfig() {
+  if (__suppressPreConfigSave) return;
+  const data = serializePreGameConfig();
+  try {
+    if (!data) localStorage.removeItem(Q_PRE_CONFIG_KEY); else localStorage.setItem(Q_PRE_CONFIG_KEY, JSON.stringify(data));
+  } catch {}
+}
+function loadPreGameConfig() {
+  if (gameStarted) return; // don't override running game UI
+  try {
+    const raw = localStorage.getItem(Q_PRE_CONFIG_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data || data.v !== 1) return;
+    __suppressPreConfigSave = true;
+    const p = document.getElementById('playersInput'); if (p && !p.disabled && data.playersRaw != null) p.value = data.playersRaw;
+    const l = document.getElementById('longestWordBonus'); if (l && !l.disabled) l.checked = data.longestB;
+    const m = document.getElementById('mostWordsBonus'); if (m && !m.disabled) m.checked = data.mostB;
+    const lp = document.getElementById('longestWordPoints'); if (lp && !lp.disabled) lp.value = data.longestPts;
+    const mp = document.getElementById('mostWordsPoints'); if (mp && !mp.disabled) mp.value = data.mostPts;
+    const sc = document.getElementById('startCards'); if (sc && !sc.disabled) sc.value = data.sc;
+    const ec = document.getElementById('endCards'); if (ec && !ec.disabled) ec.value = data.ec;
+    const api = document.getElementById('dictApiAlso'); if (api && !api.disabled) api.checked = !!data.dictApiAlso;
+    updateBonusInputs(); // reflect enabling/disabling points
+  } catch {} finally { __suppressPreConfigSave = false; }
+}
+// Attach listeners to pre-game inputs to auto-save config while editing (only when not in a game)
+function attachPreGameConfigListeners() {
+  const ids = ['playersInput','longestWordBonus','mostWordsBonus','longestWordPoints','mostWordsPoints','startCards','endCards','dictApiAlso'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const evt = (el.tagName === 'INPUT' && (el.type === 'number' || el.type === 'text')) ? 'input' : 'change';
+    el.addEventListener(evt, () => { if (!gameStarted) savePreGameConfig(); });
+  });
 }
 function loadGameState() {
   try {
@@ -353,6 +417,8 @@ function startGame() {
   document.getElementById('previousRoundsHint')?.classList.add('hidden');
   setupRound();
   saveGameState();
+  // On starting a game, remove the pre-game config snapshot (we will rely on real game state now)
+  try { localStorage.removeItem(Q_PRE_CONFIG_KEY); } catch {}
 }
 
 /**
@@ -1069,6 +1135,9 @@ function resetToPreGame() {
   document.getElementById('previousRoundsHint')?.classList.add('hidden');
 
   try { localStorage.removeItem(Q_STORAGE_KEY); } catch {}
+  // After resetting, re-load saved pre-game config (if any) & reattach listeners
+  loadPreGameConfig();
+  attachPreGameConfigListeners();
 }
 
 // Show end-of-game state inline (no modal) and disable further input
@@ -1131,6 +1200,9 @@ function closeEndGameDialog() {
   }
 
   if (!gameStarted) {
+    // Load any saved pre-game config (only if no active game restored)
+    loadPreGameConfig();
+    attachPreGameConfigListeners();
     const p = document.getElementById('playersInput');
     if (p && !p.disabled) { p.focus(); p.select?.(); }
   }
