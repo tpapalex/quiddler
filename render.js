@@ -75,8 +75,12 @@ function renderChit(word, opts = {}) {
 }
 
 // Row header segments
-function renderPlayerRowHeader(player, pdata) {
-  // Displays: player name | roundScore | inline breakdown (base - deductions + bonuses)
+function renderPlayerRowHeader(player, pdata, round) {
+  // Displays: player name (+ dealer emoji if this player dealt) | roundScore | breakdown
+  const isDealer = round && round.dealer === player;
+  const dealerEmoji = (typeof window !== 'undefined' && window.QuiddlerGame?.DEALER_EMOJI) ? window.QuiddlerGame.DEALER_EMOJI : '🃏';
+  // Smaller emoji (0.85em) for historical rounds only (current round inputs use game.js markup unchanged)
+  const nameHTML = `${player}${isDealer ? `<span class=\"ml-0.5 align-middle\" style=\"font-size:0.85em; line-height:1; display:inline-block; transform:translateY(-1px);\" aria-label=\"Dealt this round\" title=\"Dealt this round\">${dealerEmoji}</span>` : ''}`;
   const parts = [];
   parts.push(Math.max(pdata.baseScore, 0));
   if (pdata.challengeDeductions) parts.push(`- ${pdata.challengeDeductions}`);
@@ -85,7 +89,7 @@ function renderPlayerRowHeader(player, pdata) {
   const breakdown = parts.join(' ');
 
   return `
-    <span class="truncate min-w-0 flex-none max-w-[8ch] sm:justify-self-start" title="${player}">${player}</span>
+    <span class="truncate min-w-0 flex-none max-w-[8ch] sm:justify-self-start" title="${player}">${nameHTML}</span>
     <span class="tabular-nums text-right justify-self-end flex-none w-[4ch]">${pdata.roundScore}</span>
     <span class="text-gray-600 truncate min-w-0 flex-1 sm:flex-none sm:block"
           title="${(pdata.challengeDeductions || pdata.bonus) ? '('+breakdown+')' : ''}">
@@ -194,9 +198,9 @@ function escapeHtml(s){
 }
 
 // Render one player's row (interactive or static)
-function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedCards = null} = {}) {
+function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedCards = null, round = null} = {}) {
   // Builds header, optional controls, list of chits and hidden edit block
-  const header = renderPlayerRowHeader(player, pdata);
+  const header = renderPlayerRowHeader(player, pdata, round);
 
   const issues = buildRowValidationIssues(pdata, expectedCards);
   const tooltipHTML = issues.length ? issues.map(escapeHtml).join('<br/>') : '';
@@ -243,7 +247,7 @@ function renderRound(round, roundIdx, {interactive = true} = {}) {
     : (typeof players !== 'undefined' ? players : []);
 
   const rows = playerList
-    .map(player => renderPlayerRow(roundIdx, player, round.players[player], {interactive, expectedCards: round.roundNum}))
+    .map(player => renderPlayerRow(roundIdx, player, round.players[player], {interactive, expectedCards: round.roundNum, round}))
     .join('');
   return `
     <div class="my-4 flex gap-4 border-b border-gray-200 pb-4">

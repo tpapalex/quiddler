@@ -47,6 +47,7 @@ let mostWordsBonus = false;
 let longestWordPoints = 0;
 let mostWordsPoints = 0;
 let currentDealerIdx = 0;
+const DEALER_EMOJI = '♠️'; // Dealer indicator (alternatives: 🃏 🎴 ♣️ ♦️ ♠️ ❤️ 🂠)
 let dictSource = 'local';        // NEW: 'local' | 'api'
 // New UI flow state
 let gameOver = false;                   // when true, no more rounds accepted
@@ -63,6 +64,7 @@ function serializeGameState() {
     players: players.slice(),
     roundsData: roundsData.map(r => ({
       roundNum: r.roundNum,
+      dealer: r.dealer || null,
       players: Object.fromEntries(Object.entries(r.players || {}).map(([p, arr]) => [p, arr.map(w => ({
         text: w.text,
         score: w.score,
@@ -108,6 +110,7 @@ function loadGameState() {
     players = data.players || [];
     roundsData = (data.roundsData || []).map(r => ({
       roundNum: r.roundNum,
+      dealer: r.dealer || null,
       players: Object.fromEntries(Object.entries(r.players || {}).map(([p, arr]) => [p, arr.map(w => ({
         text: w.text,
         score: w.score,
@@ -115,6 +118,8 @@ function loadGameState() {
         challenger: w.challenger == null ? null : w.challenger
       }))]))
     }));
+    // Backfill missing dealer fields if absent
+    roundsData.forEach((r,i)=>{ if(!r.dealer && players.length) r.dealer = players[i % players.length]; });
     currentRound = data.currentRound || 3;
     // NEW: load configurable ranges (fallback to legacy defaults)
     startCards = +data.startCards || 3;
@@ -292,21 +297,18 @@ function startGame() {
  */
 function setupRound() {
   const dealer = players[currentDealerIdx % players.length];
-  document.getElementById('roundHeader').innerText = `Round ${currentRound} Cards (${dealer} deals)`;
+  document.getElementById('roundHeader').innerText = `Round ${currentRound} Cards`;
 
   document.getElementById('scoreInputs').innerHTML = `
     <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces, using parentheses around digraphs and a '-' prefix before all unused cards.</div>
     ${players.map((player, i) => `
       <div class="player-input-row mb-2 flex items-center gap-2">
-        <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1">${player}</label>
+        <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-0.5" aria-label="Deals this round" title="Deals this round">${DEALER_EMOJI}</span>` : ''}</label>
         <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
       </div>
     `).join('')}`;
-
-  // Ensure inputs are visible in case a previous game hid them
+  // ...existing code...
   document.getElementById('scoreInputs')?.classList.remove('hidden');
-
-  // Pressing Enter on any player's input submits the round (unless game is over)
   document.querySelectorAll('.player-words').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -315,11 +317,8 @@ function setupRound() {
       }
     });
   });
-
-  // Focus the first player's input for quick entry
   const firstInput = document.querySelector('.player-words');
   if (firstInput) { firstInput.focus(); firstInput.select?.(); }
-
   currentDealerIdx++;
 }
 
@@ -379,7 +378,8 @@ async function validateWordAPI(word) {
  */
 function nextRound() {
   if (gameOver) return; // do nothing if game has ended
-  const round = { roundNum: currentRound, players: {} };
+  const roundDealer = players[(currentDealerIdx - 1 + players.length) % players.length];
+  const round = { roundNum: currentRound, dealer: roundDealer, players: {} };
 
   document.querySelectorAll('.player-words').forEach(input => {
     const player = input.dataset.player;
@@ -877,6 +877,7 @@ if (typeof window !== 'undefined') {
   // Add persistence helpers to namespace
   window.QuiddlerGame.saveGameState = saveGameState;
   window.QuiddlerGame.loadGameState = loadGameState;
+  window.QuiddlerGame.DEALER_EMOJI = DEALER_EMOJI; // expose emoji for render helpers
 }
 
 // --------------- New UI Flow helpers ---------------
