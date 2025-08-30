@@ -131,15 +131,49 @@ function normalizeFD(raw) {
     const word     = entry.word || '';
     const phonetic = entry.phonetic || (entry.phonetics?.find(p => p.text)?.text) || '';
     const audioUrl = entry.phonetics?.find(p => p.audio)?.audio || '';
-    const meanings = (entry.meanings || []).map(m => ({
+    // Map raw meanings -> interim structure
+    const rawMeanings = (entry.meanings || []).map(m => ({
       pos: m.partOfSpeech || '',
       senses: (m.definitions || []).map(d => ({
         def: d.definition || '',
         example: d.example || '',
         synonyms: uniq(d.synonyms || m.synonyms || []),
         antonyms: uniq(d.antonyms || m.antonyms || []),
-      }))
+      })),
+      // capture meaning-level synonyms/antonyms (may not appear per-definition)
+      mSyn: uniq(m.synonyms || []),
+      mAnt: uniq(m.antonyms || [])
     })).filter(m => m.senses.length);
+
+    // Consolidate by part of speech (preserve first-seen order)
+    const seenOrder = [];
+    const byPOS = Object.create(null);
+    for (const m of rawMeanings) {
+      const key = m.pos || '_';
+      if (!byPOS[key]) {
+        byPOS[key] = { pos: m.pos, senses: [], mSyn: new Set(), mAnt: new Set() };
+        seenOrder.push(key);
+      }
+      const tgt = byPOS[key];
+      // Append senses in order
+      for (const s of m.senses) tgt.senses.push(s);
+      // Union meaning-level synonyms/antonyms
+      for (const s of m.mSyn) tgt.mSyn.add(s);
+      for (const a of m.mAnt) tgt.mAnt.add(a);
+    }
+
+    // Build final meanings array
+    const meanings = seenOrder.map(k => {
+      const v = byPOS[k];
+      return {
+        pos: v.pos,
+        senses: v.senses,
+        // Provide aggregated synonyms/antonyms if needed later
+        aggSynonyms: Array.from(v.mSyn),
+        aggAntonyms: Array.from(v.mAnt)
+      };
+    }).filter(m => m.senses.length);
+
     const sourceUrls = entry.sourceUrls || [];
     return { word, phonetic, audioUrl, meanings, sourceUrls };
   }).filter(e => e.word || e.meanings.length);
@@ -205,28 +239,32 @@ function htmlForEntry(entry, {senseLimit=3, entryIdx=0}={}) {
 // One numbered sense line with example + synonym chips
 function senseLine(sense, idx) {
   const ex = sense.example ? `<div class="text-[12px] text-gray-500 mt-0.5">“${esc(sense.example)}”</div>` : '';
-  const syn = (sense.synonyms?.length)
-    ? `<div class="flex flex-wrap gap-1 mt-1">${sense.synonyms.slice(0,8).map(w => chip(w)).join('')}</div>` : '';
-  const ant = (sense.antonyms?.length)
-    ? `<div class="flex flex-wrap gap-1 mt-1">${sense.antonyms.slice(0,8).map(w => chip(w, true)).join('')}</div>` : '';
+  const synChips = (sense.synonyms||[]).slice(0,8).map(w => chip(w,false));
+  const antChips = (sense.antonyms||[]).slice(0,8).map(w => chip(w,true));
+  const rel = [...synChips, ...antChips];
+  const relHtml = rel.length ? `<div class="flex flex-wrap items-center gap-1 mt-1"><span class="text-[10px] text-gray-500 mr-1">Synonyms/Antonyms:</span>${rel.join('')}</div>` : '';
   return `
     <li>
       <div>${esc(sense.def)}</div>
       ${ex}
-      ${syn ? `<div class="text-[11px] text-gray-600 mt-1"><span class="mr-1">Syn:</span>${syn}</div>` : ''}
-      ${ant ? `<div class="text-[11px] text-gray-600 mt-1"><span class="mr-1">Ant:</span>${ant}</div>` : ''}
+      ${relHtml}
     </li>
   `;
 }
 
 // Little synonym/antonym chip (clickable to look up)
 function chip(word, isAnt=false) {
-  const cls = isAnt ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-blue-50 text-blue-700 ring-blue-200';
-  const w = esc(word);
+  const multi = /\s/.test(String(word||'').trim());
+  const cls = isAnt ? 'bg-red-50 text-red-700 ring-red-200' : 'bg-green-50 text-green-700 ring-green-200';
+  const baseClasses = `px-1 py-0.5 rounded-md text-[10px] ring-1 ${cls}`;
+  const wEsc = esc(word);
+  if (multi) {
+    return `<span class="${baseClasses} opacity-80 cursor-default">${wEsc}</span>`;
+  }
   return `
     <button type="button"
-            class="px-1.5 py-0.5 rounded-md text-[11px] ring-1 ${cls} hover:brightness-95"
-            onclick="window.QuiddlerTools?.showDict?.('${w}')">${w}</button>
+            class="${baseClasses} hover:brightness-95"
+            onclick="window.QuiddlerTools?.showDict?.('${wEsc}')">${wEsc}</button>
   `;
 }
 

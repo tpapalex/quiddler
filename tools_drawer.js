@@ -149,9 +149,23 @@ function initToolsDrawer(){
     if (emptyHint) emptyHint.classList.add('hidden');
 
     // Local dictionary (always show block, with fallback text)
-    const local = getWordDefinitionLocal(cleaned);
+    const localRaw = getWordDefinitionLocal(cleaned);
     if (localWrap && localEl) {
-      localEl.innerHTML = local ?? '<span class="text-gray-500">No definition found</span>';
+      let localHTML = '<span class="text-gray-500">No definition found</span>';
+      if (localRaw) {
+        try {
+          // Use parser for structured Collins rendering (badges for pos / variants / aka / inflections)
+            const parsed = (typeof parseCollinsEntry === 'function') ? parseCollinsEntry(cleaned) : (window.CollinsParsing?.parseCollinsEntry?.(cleaned));
+            if (parsed && typeof renderParsedCollins === 'function') {
+              localHTML = renderParsedCollins(parsed);
+            } else {
+              localHTML = localRaw; // fallback
+            }
+        } catch(_) {
+          localHTML = localRaw; // safety fallback on any parsing error
+        }
+      }
+      localEl.innerHTML = localHTML;
       localWrap.classList.remove('hidden');
     }
 
