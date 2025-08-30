@@ -47,7 +47,7 @@ let mostWordsBonus = false;
 let longestWordPoints = 0;
 let mostWordsPoints = 0;
 let currentDealerIdx = 0;
-const DEALER_EMOJI = '♠️'; // Dealer indicator (alternatives: 🃏 🎴 ♣️ ♦️ ♠️ ❤️ 🂠)
+const DEALER_EMOJI = '🃏 '; // Dealer indicator (alternatives: 🀄 🃏 🎴 ♣️ ♦️ ♠️ ❤️ 🂠)
 let dictSource = 'local';        // NEW: 'local' | 'api'
 // New UI flow state
 let gameOver = false;                   // when true, no more rounds accepted
@@ -304,12 +304,12 @@ function loadGameState() {
     }
     // Ensure headers visibility on restored game
     const hasRounds = roundsData.length > 0;
-    document.getElementById('runningTotalsHeader')?.classList.toggle('hidden', !hasRounds);
+    // Running totals now always visible once a game is loaded
+    const runHdr2 = document.getElementById('runningTotalsHeader'); if (runHdr2) runHdr2.classList.remove('hidden');
+    const scoreTotals2 = document.getElementById('scoreTotals'); if (scoreTotals2) scoreTotals2.classList.remove('hidden');
+    // Previous rounds related elements still conditional
     document.getElementById('previousRoundsHeader')?.classList.toggle('hidden', !hasRounds);
-    // NEW: keep lists in sync with headers when restoring
-    document.getElementById('scoreTotals')?.classList.toggle('hidden', !hasRounds);
     document.getElementById('previousRounds')?.classList.toggle('hidden', !hasRounds);
-    // NEW: toggle hint under Previous Rounds with the section
     document.getElementById('previousRoundsHint')?.classList.toggle('hidden', !hasRounds);
   } catch (e) {
     console.warn('Persist load failed', e);
@@ -317,6 +317,7 @@ function loadGameState() {
     __suppressAutoSave = false;
     // Save immediately to normalize schema if needed
     saveGameState();
+    updateSkipVisibility(); // NEW ensure correct visibility after load
   }
 }
 
@@ -406,7 +407,14 @@ function startGame() {
   document.getElementById('preGameConfig')?.classList.add('hidden');
 
   // Clear previous game state from UI
-  document.getElementById('scoreTotals').innerHTML = '';
+  // (Preserve scoreboard sizing container so width constraints persist)
+  const scoreTotalsWrapper = document.getElementById('scoreTotals');
+  if (scoreTotalsWrapper) {
+    const inner = scoreTotalsWrapper.querySelector('[aria-label="Player running totals"]');
+    if (inner) inner.innerHTML = ''; else {
+      scoreTotalsWrapper.innerHTML = '<div class="inline-block w-full max-w-[20rem] sm:max-w-[21rem] rounded-lg bg-white/90 backdrop-blur-sm px-0 py-4" aria-label="Player running totals"></div>';
+    }
+  }
   document.getElementById('previousRounds').innerHTML = '';
 
   // Make game area visible and start first round
@@ -425,14 +433,15 @@ function startGame() {
   // Make sure round inputs are visible when starting anew
   document.getElementById('scoreInputs')?.classList.remove('hidden');
 
-  // Hide section headers until a first round exists
-  document.getElementById('runningTotalsHeader')?.classList.add('hidden');
+  // Running Totals now always shown (initialize with zero scores)
+  const runHdr = document.getElementById('runningTotalsHeader'); if (runHdr) runHdr.classList.remove('hidden');
+  const scoreTotalsEl = document.getElementById('scoreTotals'); if (scoreTotalsEl) scoreTotalsEl.classList.remove('hidden');
+  // Hide only previous round related UI until first round finalized
   document.getElementById('previousRoundsHeader')?.classList.add('hidden');
-  // NEW: also hide the lists themselves until there are rounds
-  document.getElementById('scoreTotals')?.classList.add('hidden');
   document.getElementById('previousRounds')?.classList.add('hidden');
-  // NEW: hide the hint under Previous Rounds until there are rounds
   document.getElementById('previousRoundsHint')?.classList.add('hidden');
+  // Populate initial zero scoreboard
+  updateScores();
   setupRound();
   saveGameState();
   // On starting a game, remove the pre-game config snapshot (we will rely on real game state now)
@@ -444,7 +453,7 @@ function startGame() {
  */
 function setupRound() {
   const dealer = players[currentDealerIdx % players.length];
-  document.getElementById('roundHeader').innerText = `Round ${currentRound} Cards`;
+  document.getElementById('roundHeader').innerHTML = `Current Round <span class="text-gray-500 text-base font-medium ml-1">(${currentRound} cards)</span>`;
 
   document.getElementById('scoreInputs').innerHTML = `
     <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Round auto-advances after all players submit.</div>
@@ -452,7 +461,7 @@ function setupRound() {
       <div class="player-input-row mb-2 flex items-center gap-2">
         <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-1.5" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
         <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
-        <button type="button" class="submit-player-btn px-2 py-1 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded" data-player="${player}" title="Submit ${player}'s play">Submit</button>
+        <button type="button" class="submit-player-btn inline-flex items-center gap-1 px-2 py-1 text-sm font-medium rounded-md border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition" data-player="${player}" title="Submit all players' words">Submit</button>
       </div>
     `).join('')}`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
@@ -495,13 +504,14 @@ function setupRound() {
   if (firstInput) { firstInput.focus(); firstInput.select?.(); }
   currentDealerIdx++;
   currentRoundDraftInputs = {}; // NEW reset draft for new round
+  updateSkipVisibility(); // NEW
 }
 
 // NEW: Rebuild current round input UI from an existing unfinalized round (on reload)
 function rebuildInputsFromExistingRound(round) {
   if (!round) return;
   const dealer = round.dealer;
-  document.getElementById('roundHeader').innerText = `Round ${round.roundNum} Cards`;
+  document.getElementById('roundHeader').innerHTML = `Current Round <span class=\"text-gray-500 text-base font-medium ml-1\">(${round.roundNum} cards)</span>`;
   document.getElementById('scoreInputs').innerHTML = `
     <div class="text-sm text-gray-500 mb-2">Round in progress. Edit & resubmit a single player as needed; challenges reset for that player's changed words. Enter submits just that player.</div>
     ${players.map((player, i) => {
@@ -510,7 +520,7 @@ function rebuildInputsFromExistingRound(round) {
       <div class=\"player-input-row mb-2 flex items-center gap-2\">
         <label for=\"player-words-${i}\" class=\"font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-1.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
         <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\">
-        <button type=\"button\" class=\"submit-player-btn px-2 py-1 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded\" data-player=\"${player}\" title=\"Submit ${player}'s play\">Submit</button>
+        <button type=\"button\" class=\"submit-player-btn inline-flex items-center gap-1 px-2 py-1 text-sm font-medium rounded-md border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition\" data-player=\"${player}\" title=\"Submit all players' words\">Submit</button>
       </div>`;
     }).join('')}`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
@@ -552,6 +562,7 @@ function rebuildInputsFromExistingRound(round) {
       }
     });
   },0);
+  updateSkipVisibility(); // NEW
 }
 
 // PARTIAL ROUND: per-player submission
@@ -918,11 +929,39 @@ function saveEdit(player, roundIdx, btn) {
  * Update the leaderboard list from the current totals.
  */
 function updateScores() {
-  document.getElementById('scoreTotals').innerHTML = players
-    .map(player => ({ player, score: scores[player] }))
-    .sort((a, b) => b.score - a.score)
-    .map(({ player, score }) => `<li>${player}: ${score} points</li>`)
-    .join('');
+  const wrapper = document.getElementById('scoreTotals');
+  if (!wrapper) return;
+  let box = wrapper.querySelector('[aria-label="Player running totals"]');
+  if (!box) {
+    box = document.createElement('div');
+    box.setAttribute('aria-label','Player running totals');
+    box.className = 'inline-block w-full max-w-[20rem] sm:max-w-[21rem] rounded-lg bg-white/90 backdrop-blur-sm px-0 py-4';
+    wrapper.appendChild(box);
+  } else {
+    // Ensure required classes exist (handles case where container was rebuilt without them)
+    const needed = ['inline-block','w-full','max-w-[20rem]','sm:max-w-[21rem]','rounded-lg','bg-white/90','backdrop-blur-sm','px-0','py-4'];
+    needed.forEach(c => { if (!box.classList.contains(c)) box.classList.add(c); });
+    // Remove any old horizontal padding variants (px-5 etc)
+    if (box.classList.contains('px-5')) box.classList.remove('px-5');
+  }
+  box.classList.add('space-y-2');
+
+  const rows = players.map(player => ({ player, score: scores[player] }))
+    .sort((a,b) => b.score - a.score);
+  const topScore = rows.length ? rows[0].score : 0;
+
+  // Header row (no Rank column now)
+  const headerRow = `<div class=\"flex items-center justify-between px-3 pb-1 text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200/70\">
+      <span>Player</span>
+      <span>Score</span>
+    </div>`;
+
+  const body = rows.map(({ player, score }) => {
+    const leader = score === topScore && topScore !== 0;
+    const decoratedName = leader && gameOver ? `${player} 🎉` : player;
+    return `<div class=\"flex items-center justify-between px-3 py-2 text-[16px] leading-tight rounded-lg ${leader ? 'bg-blue-50 font-semibold text-blue-700' : 'bg-white/70 hover:bg-white'} transition\">\n              <span class=\"truncate leading-none ${leader ? 'font-semibold' : 'font-medium'}\">${decoratedName}</span>\n              <span class=\"tabular-nums ${leader ? 'text-blue-700 font-semibold' : 'text-gray-900 font-semibold'} leading-none text-[16px]\">${score}</span>\n            </div>`;
+  }).join('') || '<div class="px-2 py-2 text-sm text-gray-500">No scores yet</div>';
+  box.innerHTML = headerRow + body;
 }
 
 /**
@@ -1065,12 +1104,9 @@ document.getElementById('mostWordsBonus')?.addEventListener('change', updateBonu
  */
 function updatePreviousRounds() {
   const hasRounds = roundsData.length > 0;
-  document.getElementById('runningTotalsHeader')?.classList.toggle('hidden', !hasRounds);
+  // Running totals are always visible now; only toggle previous rounds section
   document.getElementById('previousRoundsHeader')?.classList.toggle('hidden', !hasRounds);
-  // NEW: keep containers in sync with header visibility
-  document.getElementById('scoreTotals')?.classList.toggle('hidden', !hasRounds);
   document.getElementById('previousRounds')?.classList.toggle('hidden', !hasRounds);
-  // NEW: toggle hint visibility with section
   document.getElementById('previousRoundsHint')?.classList.toggle('hidden', !hasRounds);
 
   const html = roundsData
@@ -1201,6 +1237,15 @@ function setElementVisible(el, visible) {
   else { el.classList.add('hidden'); el.classList.remove('flex'); }
 }
 
+// NEW: centralize skip button visibility (hide in final round or when game over)
+function updateSkipVisibility() {
+  const btn = document.getElementById('skipRoundBtn');
+  if (!btn) return;
+  const hide = !gameStarted || gameOver || currentRound === maxRound; // hide immediately upon reaching final round
+  btn.classList.toggle('hidden', hide);
+  btn.disabled = hide;
+}
+
 function resetToPreGame() {
   // Hide game UI and show pre-game inputs
   closeEndGameDialog();
@@ -1281,25 +1326,17 @@ function endGame(completedAllRounds = false) {
   lastGameCompletedAllRounds = !!completedAllRounds;
   const submitBtn = document.getElementById('submitRoundBtn');
   if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('hidden'); }
-  // NEW disable & hide skip button when game ends
   const skipBtn = document.getElementById('skipRoundBtn'); if (skipBtn) { skipBtn.disabled = true; skipBtn.classList.add('hidden'); }
-
-  // Remove and hide current round inputs so Enter can't submit new rounds
+  // Hide current round header & inputs entirely (no Game Over label)
   const inputs = document.getElementById('scoreInputs');
   if (inputs) { inputs.innerHTML = ''; inputs.classList.add('hidden'); }
   const header = document.getElementById('roundHeader');
-  if (header) header.textContent = 'Game Over 🎉';
-  
-  // Rename Running Totals header to Final Scores
+  if (header) { header.textContent = ''; header.classList.add('hidden'); }
   const runHdr = document.getElementById('runningTotalsHeader');
   if (runHdr) runHdr.textContent = 'Final Scores';
-
-  // Ensure totals are visible
-  document.getElementById('runningTotalsHeader')?.classList.remove('hidden');
   document.getElementById('scoreTotals')?.classList.remove('hidden');
-
-  // (Modal removed — previously summary + new game options displayed here.)
-  currentRoundDraftInputs = {}; // NEW clear drafts
+  currentRoundDraftInputs = {};
+  updateScores();
   saveGameState();
 }
 

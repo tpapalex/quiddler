@@ -12,7 +12,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quiddler Scoring App</title>
+    <title>Quiddler Scores</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Tippy.js Tooltip Dependencies -->
     <script src="https://unpkg.com/@popperjs/core@2"></script>
@@ -32,7 +32,10 @@
 </head>
 <body class="bg-gray-100 p-4">
     <div class="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">
-        <h1 class="text-2xl font-bold mb-4">Quiddler Scoring App</h1>
+        <div class="mb-4 text-center">
+          <h1 class="text-2xl font-bold inline-flex items-center gap-3 justify-center w-full">Quiddler Scores</h1>
+          <!-- New Game button removed; now a floating action button with the tool buttons -->
+        </div>
 
         <!-- Pre-game config (visible until a game starts) -->
         <div id="preGameConfig" class="mb-4">
@@ -78,20 +81,23 @@
 
         <!-- Game Area -->
         <div id="gameArea" class="hidden">
-            <h2 class="font-semibold text-xl mb-2" id="roundHeader"></h2>
+            <!-- Running Totals now embedded with internal header row -->
+            <div id="scoreTotals" class="mb-4 flex justify-center">
+              <div class="inline-block w-full max-w-[20rem] sm:max-w-[21rem] rounded-lg bg-white/90 backdrop-blur-sm px-0 py-4" aria-label="Player running totals">
+                <!-- Rows (header + players) injected by updateScores() -->
+              </div>
+            </div>
+
+            <div id="roundHeaderBar" class="flex items-center gap-3 mb-2">
+              <h2 class="font-semibold text-xl leading-none flex items-center" id="roundHeader"></h2>
+              <button id="skipRoundBtn" aria-label="Skip round" class="hidden inline-flex items-center gap-1 justify-center h-6 px-3 rounded-full bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 hover:border-gray-400 active:bg-gray-300 active:border-gray-400 transition disabled:opacity-60 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-sm font-medium translate-y-[2px]" type="button">
+                <span class="select-none">Skip</span>
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="w-4 h-4"><path d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256l-7.108-4.061C13.555 6.346 12 7.249 12 8.689v2.34L5.055 7.061Z"/></svg>
+              </button>
+            </div>
 
             <!-- Player round inputs -->
             <div id="scoreInputs"></div>
-
-            <!-- Actions -->
-            <div class="mt-3 flex items-center gap-2">
-              <button id="skipRoundBtn" class="bg-blue-500 text-white py-2 px-4 rounded hidden" title="Skip current round">Skip Round</button>
-              <button id="newGameBtn" class="bg-blue-500 text-white py-2 px-4 rounded">New Game</button>
-            </div>
-
-            <!-- Overall summary -->
-            <h3 id="runningTotalsHeader" class="font-semibold text-xl mt-6 hidden">Running Totals</h3>
-            <ul id="scoreTotals" class="list-disc pl-6"></ul>
 
             <!-- Round details -->
             <h3 id="previousRoundsHeader" class="font-semibold text-xl mt-6 hidden">Previous Rounds</h3>
@@ -118,6 +124,15 @@
               data-tippy-content="Solver (⌘/Ctrl+O)"
               type="button">
         <img src="cog-6-tooth.svg" class="w-7 h-7 invert" alt="" />
+      </button>
+
+      <!-- New Game floating action button -->
+      <button id="newGameBtn"
+              class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg"
+              aria-label="New Game (⌘/Ctrl+Enter)"
+              data-tippy-content="New Game (⌘/Ctrl+Enter)"
+              type="button">
+        <img src="arrow-path.svg" class="w-7 h-7 invert" alt="" />
       </button>
     </div>
 
@@ -340,6 +355,8 @@
           tippy('#clearGameCacheBtn', commonOpts);
         }
       })();
+
+      // REMOVED skip button tooltip init (text label provides affordance)
 
       // Simplified shortcut modal toggle (single source of truth)
       (function(){

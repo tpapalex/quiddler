@@ -403,5 +403,6 @@ function initToolsDrawer(){
   if (window.tippy) {
     tippy('#dictToolBtn', { placement: 'left', animation: 'scale' });
     tippy('#optToolBtn',  { placement: 'left', animation: 'scale' });
+    tippy('#newGameBtn',  { placement: 'left', animation: 'scale' }); // NEW
   }
 }
