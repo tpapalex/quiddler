@@ -80,7 +80,7 @@ function renderPlayerRowHeader(player, pdata, round) {
   const isDealer = round && round.dealer === player;
   const dealerEmoji = (typeof window !== 'undefined' && window.QuiddlerGame?.DEALER_EMOJI) ? window.QuiddlerGame.DEALER_EMOJI : '🃏';
   // Smaller emoji (0.85em) for historical rounds only (current round inputs use game.js markup unchanged)
-  const nameHTML = `${player}${isDealer ? `<span class=\"dealer-indicator ml-0.5 align-middle\" style=\"font-size:0.85em; line-height:1; display:inline-block; transform:translateY(-1px);\" aria-label=\"${player} dealt round ${round.roundNum}\" data-tippy-content=\"${player} dealt round ${round.roundNum}\">${dealerEmoji}</span>` : ''}`;
+  const nameHTML = `${player}${isDealer ? `<span class=\"dealer-indicator ml-1.5 align-middle\" style=\"font-size:0.85em; line-height:1; display:inline-block; transform:translateY(-1px);\" aria-label=\"${player} dealt round ${round.roundNum}\" data-tippy-content=\"${player} dealt round ${round.roundNum}\">${dealerEmoji}</span>` : ''}`;
   const parts = [];
   parts.push(Math.max(pdata.baseScore, 0));
   if (pdata.challengeDeductions) parts.push(`- ${pdata.challengeDeductions}`);

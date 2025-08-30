@@ -450,7 +450,7 @@ function setupRound() {
     <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Round auto-advances after all players submit.</div>
     ${players.map((player, i) => `
       <div class="player-input-row mb-2 flex items-center gap-2">
-        <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-0.5" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
+        <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-1.5" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
         <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
         <button type="button" class="submit-player-btn px-2 py-1 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded" data-player="${player}" title="Submit ${player}'s play">Submit</button>
       </div>
@@ -468,8 +468,10 @@ function setupRound() {
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (!gameOver) submitPlayerPlay(inp.dataset.player);
-      } else if (e.key === 'Tab') { // NEW: custom tab navigation across player inputs (skip submit buttons)
+        if (!gameOver)
+          // UPDATED: Enter submits snapshot for ALL players (not just focused player)
+          submitPlayerPlay();
+      } else if (e.key === 'Tab') {
         e.preventDefault();
         const inputs = Array.from(document.querySelectorAll('.player-words'));
         const idx = inputs.indexOf(inp);
@@ -486,7 +488,7 @@ function setupRound() {
   });
   document.querySelectorAll('.submit-player-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (!gameOver) submitPlayerPlay(btn.dataset.player);
+      if (!gameOver) submitPlayerPlay(); // UPDATED: button submits ALL players
     });
   });
   const firstInput = document.querySelector('.player-words');
@@ -506,7 +508,7 @@ function rebuildInputsFromExistingRound(round) {
       const existing = (round.players[player] || []).map(w=>w.text).join(' ');
       return `
       <div class=\"player-input-row mb-2 flex items-center gap-2\">
-        <label for=\"player-words-${i}\" class=\"font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-0.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
+        <label for=\"player-words-${i}\" class=\"font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-1.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
         <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\">
         <button type=\"button\" class=\"submit-player-btn px-2 py-1 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded\" data-player=\"${player}\" title=\"Submit ${player}'s play\">Submit</button>
       </div>`;
@@ -521,7 +523,7 @@ function rebuildInputsFromExistingRound(round) {
   }
   document.querySelectorAll('.player-words').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); if (!gameOver) submitPlayerPlay(inp.dataset.player); }
+      if (e.key === 'Enter') { e.preventDefault(); if (!gameOver) submitPlayerPlay(); } // UPDATED
       else if (e.key === 'Tab') { // NEW: custom tab navigation for existing round inputs
         e.preventDefault();
         const inputs = Array.from(document.querySelectorAll('.player-words'));
@@ -537,7 +539,7 @@ function rebuildInputsFromExistingRound(round) {
     });
   });
   document.querySelectorAll('.submit-player-btn').forEach(btn => {
-    btn.addEventListener('click', () => { if (!gameOver) submitPlayerPlay(btn.dataset.player); });
+    btn.addEventListener('click', () => { if (!gameOver) submitPlayerPlay(); }); // UPDATED
   });
   currentRoundDraftInputs = Object.assign({}, currentRoundDraftInputs); // ensure object
   // Reapply any draft into inputs (players not yet submitted)
@@ -553,40 +555,59 @@ function rebuildInputsFromExistingRound(round) {
 }
 
 // PARTIAL ROUND: per-player submission
-function submitPlayerPlay(playerName) {
-  if (gameOver || !playerName) return;
-  // Find existing unfinalized round for currentRound
+function submitPlayerPlay() {
+  // UPDATED: Now submits ALL players' current inputs (playerName ignored).
+  if (gameOver) return;
+  // Find or create unfinalized round for currentRound
   let round = roundsData.find(r => r.roundNum === currentRound && r.finalized === false);
   if (!round) {
-    // Create new in-progress round (first submission for this round)
     const roundDealer = players[(currentDealerIdx - 1 + players.length) % players.length];
     round = { roundNum: currentRound, dealer: roundDealer, players: {}, finalized: false, submittedPlayers: {} };
-    // Seed empty arrays for consistency
     players.forEach(p => round.players[p] = round.players[p] || []);
     roundsData.push(round);
   }
-  // Read input value for this player
-  let inputEl = null;
-  document.querySelectorAll('.player-words').forEach(inp => { if (inp.dataset.player === playerName) inputEl = inp; });
-  const text = (inputEl?.value || '').trim();
-  const words = text ? text.split(/\s+/).filter(Boolean) : [];
-  // Replace player's row; clear any previous challenges by constructing fresh objects
-  round.players[playerName] = words.map(word => ({
-    text: word,
-    score: scoreForChit(word),
-    state: word.startsWith('-') ? 'invalid' : 'neutral',
-    challenger: null
-  }));
-  // Mark submitted even if blank (explicit clear). Blank wipes prior words.
-  round.submittedPlayers[playerName] = true;
-  // Clear draft for submitted player
-  delete currentRoundDraftInputs[playerName];
 
-  recalculateScores(); // dynamic bonuses allowed
+  // Build snapshot of all inputs
+  const inputMap = {};
+  document.querySelectorAll('.player-words').forEach(inp => {
+    const p = inp.dataset.player;
+    if (!p) return;
+    const text = (inp.value || '').trim();
+    inputMap[p] = text;
+  });
+
+  // Update each player's row; preserve existing row (incl. challenges) if unchanged.
+  players.forEach(p => {
+    const newText = inputMap[p] || '';
+    const words = newText ? newText.split(/\s+/).filter(Boolean) : [];
+    const existingWords = (round.players[p] || []).map(w => w.text).join(' ');
+    if (!words.length) {
+      // Blank submission: treat as NOT submitted; clear row.
+      round.players[p] = [];
+      if (round.submittedPlayers) delete round.submittedPlayers[p];
+      return;
+    }
+    if (existingWords === words.join(' ')) {
+      // Unchanged; keep existing data & keep submitted flag
+      round.submittedPlayers[p] = true;
+      return;
+    }
+    round.players[p] = words.map(word => ({
+      text: word,
+      score: scoreForChit(word),
+      state: word.startsWith('-') ? 'invalid' : 'neutral',
+      challenger: null
+    }));
+    round.submittedPlayers[p] = true; // Only mark submitted if non-blank
+    // Clear draft entry for this player (if any)
+    if (currentRoundDraftInputs) delete currentRoundDraftInputs[p];
+  });
+
+  recalculateScores();
   updatePreviousRounds();
   saveGameState();
 
-  // Auto-finalize when all players submitted
+  // Auto-finalize only if EVERY player has a non-blank submission
   const allSubmitted = players.every(p => round.submittedPlayers[p]);
   if (allSubmitted) {
     round.finalized = true;
@@ -600,19 +621,14 @@ function submitPlayerPlay(playerName) {
     } else {
       endGame(true);
     }
-    return; // stop focusing logic; new round (or game end) handled
+    return;
   }
 
-  // Focus next blank/unsubmitted input for convenience
+  // Focus first unsubmitted player's input
   const inputs = Array.from(document.querySelectorAll('.player-words'));
   for (const inp of inputs) {
     const p = inp.dataset.player;
-    const val = inp.value.trim();
-    if (!round.submittedPlayers[p] || val === '') { // not yet submitted or still blank
-      inp.focus();
-      inp.select?.();
-      break;
-    }
+    if (!round.submittedPlayers[p]) { inp.focus(); inp.select?.(); break; }
   }
 }
 
