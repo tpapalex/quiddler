@@ -75,6 +75,7 @@ function serializeGameState() {
       roundNum: r.roundNum,
       dealer: r.dealer || null,
       finalized: r.finalized !== false,
+      skipped: !!r.skipped, // NEW persisted skipped flag
       submittedPlayers: Object.keys(r.submittedPlayers || {}),
       players: Object.fromEntries(Object.entries(r.players || {}).map(([p, arr]) => [p, arr.map(w => ({
         text: w.text,
@@ -124,6 +125,7 @@ function loadGameState() {
       roundNum: r.roundNum,
       dealer: r.dealer || null,
       finalized: r.finalized !== false, // treat missing as finalized
+      skipped: !!r.skipped,            // NEW load skipped flag
       submittedPlayers: (r.submittedPlayers || []).reduce((m,p)=>{ m[p]=true; return m; }, {}),
       players: Object.fromEntries(Object.entries(r.players || {}).map(([p, arr]) => [p, arr.map(w => ({
         text: w.text,
@@ -186,6 +188,8 @@ function loadGameState() {
     document.getElementById('preGameConfig')?.classList.add('hidden');
     document.getElementById('gameArea')?.classList.remove('hidden');
     document.getElementById('currentBonuses')?.classList.remove('hidden');
+    // NEW: show skip button on restore (if game not over)
+    const skipBtn2 = document.getElementById('skipRoundBtn'); if (skipBtn2 && !gameOver) { skipBtn2.classList.remove('hidden'); skipBtn2.disabled = false; }
     document.getElementById('endGameBtn')?.classList.remove('hidden');
 
     // Recompute (ensures scores and bonuses re-derived if logic changed)
@@ -326,6 +330,8 @@ function startGame() {
   // Make game area visible and start first round
   document.getElementById('gameArea').classList.remove('hidden');
   document.getElementById('currentBonuses')?.classList.remove('hidden');
+  // NEW: ensure skip round button visible
+  const skipBtn = document.getElementById('skipRoundBtn'); if (skipBtn) { skipBtn.classList.remove('hidden'); skipBtn.disabled = false; }
 
   // Toolbar visibility
   document.getElementById('endGameBtn')?.classList.remove('hidden');
@@ -961,7 +967,8 @@ if (typeof window !== 'undefined') {
     resetToPreGame,
     submitPlayerPlay, // NEW export
     rebuildInputsFromExistingRound, // NEW export
-    getWordDefinitionAPI // NEW: re-export API lookup helper
+    getWordDefinitionAPI, // NEW: re-export API lookup helper
+    skipRound // NEW export
   });
 
   // Read-only getters for state
@@ -1027,6 +1034,8 @@ function resetToPreGame() {
   document.getElementById('gameArea')?.classList.add('hidden');
   document.getElementById('preGameConfig')?.classList.remove('hidden');
   document.getElementById('endGameBtn')?.classList.add('hidden');
+  // NEW hide skip round button
+  const skipBtn4 = document.getElementById('skipRoundBtn'); if (skipBtn4) { skipBtn4.classList.add('hidden'); skipBtn4.disabled = true; }
 
   // Re-enable pre-game inputs
   document.getElementById('playersInput').disabled = false;
@@ -1068,6 +1077,8 @@ function endGame(completedAllRounds = false) {
   lastGameCompletedAllRounds = !!completedAllRounds;
   const submitBtn = document.getElementById('submitRoundBtn');
   if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('hidden'); }
+  // NEW disable & hide skip button when game ends
+  const skipBtn = document.getElementById('skipRoundBtn'); if (skipBtn) { skipBtn.disabled = true; skipBtn.classList.add('hidden'); }
 
   // Remove and hide current round inputs so Enter can't submit new rounds
   const inputs = document.getElementById('scoreInputs');
@@ -1142,6 +1153,14 @@ function closeEndGameDialog() {
       resetToPreGame();
       return;
     }
+    // Ctrl/Cmd+. -> Skip current round (if active)
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key === '.') {
+      if (gameStarted && !gameOver) {
+        e.preventDefault();
+        skipRound();
+        return;
+      }
+    }
     // Note: Enter alone is handled on the end-game modal to start a new game
   });
 })();
@@ -1193,3 +1212,38 @@ const __observer = new MutationObserver(() => {
   if (document.querySelector('.player-words') && !gameOver) attachDraftListeners();
 });
 __observer.observe(document.getElementById('scoreInputs') || document.body, { childList:true, subtree:true });
+
+// NEW: Skip current round feature
+function skipRound() {
+  if (!gameStarted || gameOver) return;
+  // Check for existing unfinalized round for currentRound
+  let existing = roundsData.find(r => r.roundNum === currentRound && r.finalized === false && !r.skipped);
+  if (existing) {
+    const anySubmitted = existing.submittedPlayers && Object.keys(existing.submittedPlayers).length > 0;
+    if (anySubmitted) {
+      if (!confirm('Some players have submitted entries this round. Skipping will discard them. Continue?')) return;
+    }
+    // Remove existing partial round
+    roundsData = roundsData.filter(r => r !== existing);
+  }
+  const dealerForRound = players[(currentDealerIdx - 1 + players.length) % players.length];
+  const skippedRound = {
+    roundNum: currentRound,
+    dealer: dealerForRound,
+    skipped: true,
+    finalized: true,
+    submittedPlayers: {},
+    players: Object.fromEntries(players.map(p => [p, []]))
+  };
+  roundsData.push(skippedRound);
+  updatePreviousRounds();
+  recalculateScores();
+  saveGameState();
+  if (currentRound < maxRound) {
+    currentRound += 1;
+    setupRound();
+    saveGameState();
+  } else {
+    endGame(true);
+  }
+}

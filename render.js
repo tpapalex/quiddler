@@ -242,6 +242,14 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedC
 // Render a whole round block (interactive or static)
 function renderRound(round, roundIdx, {interactive = true} = {}) {
   // Maps current global players order to rows for this round
+  if (round && round.skipped) {
+    return `
+      <div class="my-4 flex gap-4 border-b border-gray-200 pb-4">
+        <div class="font-bold min-w-[50px] flex items-center justify-center text-xl">${round.roundNum}</div>
+        <div class="flex items-center text-gray-500 italic">Skipped</div>
+      </div>
+    `;
+  }
   const playerList = (window.QuiddlerGame?.players)
     ? window.QuiddlerGame.players
     : (typeof players !== 'undefined' ? players : []);
