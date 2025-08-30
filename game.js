@@ -264,12 +264,22 @@ function loadGameState() {
       // Re-show game over state & summary
       endGame(lastGameCompletedAllRounds);
     } else {
-      // Dealer index in saved state is always one ahead (setupRound increments after using it)
-      if (players.length) {
+      // FIX: Dealer index adjustment
+      // Previously we always decremented currentDealerIdx assuming we would call setupRound() next.
+      // However, if an unfinalized round already exists (we will rebuildInputsFromExistingRound instead
+      // of calling setupRound), decrementing caused the dealer pointer to move back one, leading to the
+      // same dealer being assigned in two consecutive finalized rounds.
+      // Logic now:
+      //   If there is NO unfinalized round for currentRound (i.e. we are about to call setupRound again),
+      //   then decrement so setupRound chooses the correct dealer and re-increments.
+      //   Otherwise (we are resuming an in-progress round), leave currentDealerIdx as-is because it already
+      //   points to the next dealer (one ahead of the current dealer for the in-progress round).
+      const last = roundsData[roundsData.length - 1];
+      const hasUnfinalizedCurrent = last && !last.finalized && last.roundNum === currentRound;
+      if (!hasUnfinalizedCurrent && players.length) {
         currentDealerIdx = (currentDealerIdx - 1 + players.length) % players.length;
       }
       // If the current (last) round is unfinalized, rebuild inputs from it; else create fresh inputs
-      const last = roundsData[roundsData.length - 1];
       if (last && !last.finalized && last.roundNum === currentRound) {
         rebuildInputsFromExistingRound(last);
       } else {
@@ -432,7 +442,7 @@ function setupRound() {
     <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Submit each player individually; round auto-advances after all submitted. Enter submits just that player.</div>
     ${players.map((player, i) => `
       <div class="player-input-row mb-2 flex items-center gap-2">
-        <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-0.5" aria-label="Deals this round" data-tippy-content="Deals this round">${DEALER_EMOJI}</span>` : ''}</label>
+        <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-0.5" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
         <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
         <button type="button" class="submit-player-btn px-2 py-1 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded" data-player="${player}" title="Submit ${player}'s play">Submit</button>
       </div>
@@ -476,7 +486,7 @@ function rebuildInputsFromExistingRound(round) {
       const existing = (round.players[player] || []).map(w=>w.text).join(' ');
       return `
       <div class=\"player-input-row mb-2 flex items-center gap-2\">
-        <label for=\"player-words-${i}\" class=\"font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-0.5\" aria-label=\"Deals this round\" data-tippy-content=\"Deals this round\">${DEALER_EMOJI}</span>` : ''}</label>
+        <label for=\"player-words-${i}\" class=\"font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-0.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
         <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\">
         <button type=\"button\" class=\"submit-player-btn px-2 py-1 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded\" data-player=\"${player}\" title=\"Submit ${player}'s play\">Submit</button>
       </div>`;

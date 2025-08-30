@@ -80,7 +80,7 @@ function renderPlayerRowHeader(player, pdata, round) {
   const isDealer = round && round.dealer === player;
   const dealerEmoji = (typeof window !== 'undefined' && window.QuiddlerGame?.DEALER_EMOJI) ? window.QuiddlerGame.DEALER_EMOJI : '🃏';
   // Smaller emoji (0.85em) for historical rounds only (current round inputs use game.js markup unchanged)
-  const nameHTML = `${player}${isDealer ? `<span class=\"dealer-indicator ml-0.5 align-middle\" style=\"font-size:0.85em; line-height:1; display:inline-block; transform:translateY(-1px);\" aria-label=\"Deals this round\" data-tippy-content=\"Deals this round\">${dealerEmoji}</span>` : ''}`;
+  const nameHTML = `${player}${isDealer ? `<span class=\"dealer-indicator ml-0.5 align-middle\" style=\"font-size:0.85em; line-height:1; display:inline-block; transform:translateY(-1px);\" aria-label=\"${player} dealt round ${round.roundNum}\" data-tippy-content=\"${player} dealt round ${round.roundNum}\">${dealerEmoji}</span>` : ''}`;
   const parts = [];
   parts.push(Math.max(pdata.baseScore, 0));
   if (pdata.challengeDeductions) parts.push(`- ${pdata.challengeDeductions}`);
@@ -106,9 +106,9 @@ function renderRowControls(roundIdx, player, extraRightHTML = '') {
       <span class="flex items-center gap-1 flex-auto">
         <span class="controls-view-mode inline-flex items-center gap-1">
           <button data-action="edit" data-player="${player}" data-round="${roundIdx}"
-                  class="plain-tip opacity-100 sm:opacity-0 group-hover:opacity-100 transition" data-tippy-content="Edit row">✏️</button>
+                  class="plain-tip opacity-100 sm:opacity-0 group-hover:opacity-100 transition" data-tippy-content="Edit play">✏️</button>
           <button data-action="prefill-play" data-player="${player}" data-round="${roundIdx}"
-                  class="plain-tip opacity-100 sm:opacity-0 group-hover:opacity-100 transition text-emerald-700 hover:text-emerald-900" data-tippy-content="Open Play Helper">⚙️</button>
+                  class="plain-tip opacity-100 sm:opacity-0 group-hover:opacity-100 transition text-emerald-700 hover:text-emerald-900" data-tippy-content="Open with solver">⚙️</button>
         </span>
         <span class="controls-edit-mode hidden inline-flex items-center gap-1">
           <button data-action="save-edit" data-player="${player}" data-round="${roundIdx}"
