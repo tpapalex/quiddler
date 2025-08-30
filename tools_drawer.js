@@ -134,6 +134,7 @@ function initToolsDrawer(){
   // ===== Dictionary (async, render <br>) =====
   const dictInput  = document.getElementById('dictInput');
   const dictEmpty  = document.getElementById('dictEmpty');
+  const LAST_DICT_WORD_KEY = 'quiddlerLastDictWord'; // NEW persistence key
   // Debounce timer so we don't fetch on every keystroke
   let dictDebounceTimer = null;
   const DICT_DEBOUNCE_MS = 350;
@@ -149,12 +150,16 @@ function initToolsDrawer(){
     const cleaned = plainWord(raw);
 
     if (!cleaned) {
+      // Clear persisted key when user empties input intentionally
+      try { if (!raw) localStorage.removeItem(LAST_DICT_WORD_KEY); } catch(_){ }
       localWrap?.classList.add('hidden');
       onlineWrap?.classList.add('hidden');
       loadingEl?.classList.add('hidden');
       if (emptyHint) emptyHint.classList.remove('hidden');
       return;
     }
+    // Persist last successful cleaned lookup
+    try { localStorage.setItem(LAST_DICT_WORD_KEY, cleaned); } catch(_){ }
     if (emptyHint) emptyHint.classList.add('hidden');
 
     // Local dictionary (always show block, with fallback text)
@@ -221,10 +226,22 @@ function initToolsDrawer(){
       await doLookup();
     }
     if (e.key === 'Escape') {
-      if (dictDebounceTimer) { clearTimeout(dictDebounceTimer); dictDebounceTimer = null; }
-      dictInput.value = ''; renderDefinition('');
+      // Previously: cleared input & definition. Removed to preserve last lookup when closing drawer or shortcut modal.
+      // Intentionally NO action so the definition persists.
+      // (User can manually clear the field; Escape now only affects modal/drawer visibility.)
     }
   });
+
+  // On init, restore last looked-up word if input empty
+  try {
+    if (dictInput && (!dictInput.value || !dictInput.value.trim())) {
+      const last = localStorage.getItem(LAST_DICT_WORD_KEY);
+      if (last) {
+        dictInput.value = last;
+        renderDefinition(last);
+      }
+    }
+  } catch(_){ }
 
   // ===== Play Helper =====
   const tilesInput        = document.getElementById('tilesInput');
@@ -334,10 +351,14 @@ function initToolsDrawer(){
     showDict: async (word) => {
       openDrawer();
       showTab('dict');
-      dictInput.value = plainWord(word);
+      if (word) { // only overwrite if a new word provided
+        dictInput.value = plainWord(word);
+      }
       if (dictDebounceTimer) { clearTimeout(dictDebounceTimer); dictDebounceTimer = null; }
-      await renderDefinition(dictInput.value);
-      setTimeout(() => { dictInput?.focus(); dictInput?.select?.(); }, 0);
+      if (dictInput.value.trim()) {
+        await renderDefinition(dictInput.value);
+      }
+      setTimeout(() => { dictInput?.focus(); if (word) dictInput?.select?.(); }, 0);
       const panel = document.getElementById('toolsPanelDict');
       if (panel) panel.scrollTop = 0;
     },

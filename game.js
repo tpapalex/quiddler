@@ -1303,8 +1303,32 @@ function closeEndGameDialog() {
   }
 
   function globalShortcutHelpHandler(e){
-    // Removed Cmd/Ctrl + / handling here to avoid double toggle (now handled in index.html bootstrap script)
-    if (e.key === 'Escape') window.QuiddlerHideShortcuts?.();
+    // Escape should ONLY close the shortcuts modal if it is currently visible.
+    // Prevent the drawer's Escape handler from also firing (which would close the drawer)
+    // by stopping propagation when we handled the modal. Then refocus an input in the open drawer.
+    if (e.key === 'Escape') {
+      const modal = document.getElementById('shortcutModal');
+      const wasVisible = modal && !modal.classList.contains('hidden');
+      if (wasVisible) {
+        window.QuiddlerHideShortcuts?.();
+        // If tools drawer remains open, restore focus to its active tab input
+        const drawer = document.getElementById('toolsDrawer');
+        if (drawer && !drawer.classList.contains('translate-x-full')) {
+          const dictPanel = document.getElementById('toolsPanelDict');
+          // Defer focus till after any layout / visibility changes settle
+          setTimeout(() => {
+            if (dictPanel && !dictPanel.classList.contains('hidden')) {
+              document.getElementById('dictInput')?.focus();
+            } else {
+              document.getElementById('tilesInput')?.focus();
+            }
+          }, 0);
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+      }
+    }
   }
   document.addEventListener('keydown', globalShortcutHelpHandler);
 })();
