@@ -52,6 +52,11 @@ let dictSource = 'local';        // NEW: 'local' | 'api'
 // New UI flow state
 let gameOver = false;                   // when true, no more rounds accepted
 let lastGameCompletedAllRounds = false; // track whether the prior game reached the final round
+// NEW (Partial round support): rounds may exist before all players submit.
+// A round object now also has:
+//   finalized: boolean (default true for legacy rounds / when all players submitted)
+//   submittedPlayers: { [playerName]: true }
+// We create the round on first player submission and keep adding/replacing rows until all submit.
 
 // --- Persistence (localStorage) ---
 const Q_STORAGE_KEY = 'quiddlerGameStateV1';
@@ -65,6 +70,8 @@ function serializeGameState() {
     roundsData: roundsData.map(r => ({
       roundNum: r.roundNum,
       dealer: r.dealer || null,
+      finalized: r.finalized !== false, // default true for legacy
+      submittedPlayers: Object.keys(r.submittedPlayers || {}),
       players: Object.fromEntries(Object.entries(r.players || {}).map(([p, arr]) => [p, arr.map(w => ({
         text: w.text,
         score: w.score,
@@ -111,6 +118,8 @@ function loadGameState() {
     roundsData = (data.roundsData || []).map(r => ({
       roundNum: r.roundNum,
       dealer: r.dealer || null,
+      finalized: r.finalized !== false, // treat missing as finalized
+      submittedPlayers: (r.submittedPlayers || []).reduce((m,p)=>{ m[p]=true; return m; }, {}),
       players: Object.fromEntries(Object.entries(r.players || {}).map(([p, arr]) => [p, arr.map(w => ({
         text: w.text,
         score: w.score,
@@ -134,11 +143,15 @@ function loadGameState() {
     lastGameCompletedAllRounds = !!data.lastGameCompletedAllRounds;
     gameStarted = true;
 
-    // --- Fix: if saved currentRound equals last completed round, advance for next input ---
+    // --- Adjust round progression respecting unfinalized round ---
     if (!gameOver && roundsData.length) {
       const last = roundsData[roundsData.length - 1];
-      if (currentRound <= last.roundNum && last.roundNum < maxRound) {
-        currentRound = last.roundNum + 1; // show the next round's input
+      if (last.finalized) {
+        if (currentRound <= last.roundNum && last.roundNum < maxRound) {
+          currentRound = last.roundNum + 1; // advance only if last was finalized
+        }
+      } else {
+        currentRound = last.roundNum; // keep working on this round
       }
     }
 
@@ -179,8 +192,13 @@ function loadGameState() {
       if (players.length) {
         currentDealerIdx = (currentDealerIdx - 1 + players.length) % players.length;
       }
-      // Rebuild current round input fields (next round to be played)
-      setupRound();
+      // If the current (last) round is unfinalized, rebuild inputs from it; else create fresh inputs
+      const last = roundsData[roundsData.length - 1];
+      if (last && !last.finalized && last.roundNum === currentRound) {
+        rebuildInputsFromExistingRound(last);
+      } else {
+        setupRound();
+      }
     }
     // Ensure headers visibility on restored game
     const hasRounds = roundsData.length > 0;
@@ -197,6 +215,25 @@ function loadGameState() {
     __suppressAutoSave = false;
     // Save immediately to normalize schema if needed
     saveGameState();
+  }
+}
+
+// Local dictionary validation (re-added)
+function validateWordLocal(raw) {
+  if (!raw) return false;
+  const txt = String(raw).trim();
+  if (!txt || txt.startsWith('-')) return false; // unused/penalty chits never validated
+  // Strip parentheses (keep inner letters), punctuation, and digits; normalize to upper
+  const plain = txt
+    .replace(/\([^)]*\)/g, (m) => m.replace(/[()]/g, '')) // remove parens but keep letters inside
+    .replace(/[()]/g,'')
+    .replace(/[^A-Za-z]/g,'')
+    .toUpperCase();
+  if (!plain) return false;
+  try {
+    return !!(typeof validWordsMap !== 'undefined' && validWordsMap[plain]);
+  } catch {
+    return false;
   }
 }
 
@@ -275,7 +312,7 @@ function startGame() {
 
   // Ensure submit button is enabled for a fresh game
   const submitBtn = document.getElementById('submitRoundBtn');
-  if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('hidden'); }
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('hidden'); } // HIDE global submit in partial mode
 
   // Make sure round inputs are visible when starting anew
   document.getElementById('scoreInputs')?.classList.remove('hidden');
@@ -300,21 +337,26 @@ function setupRound() {
   document.getElementById('roundHeader').innerText = `Round ${currentRound} Cards`;
 
   document.getElementById('scoreInputs').innerHTML = `
-    <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces, using parentheses around digraphs and a '-' prefix before all unused cards.</div>
+    <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Submit each player individually; round auto-advances after all submitted. Enter submits just that player.</div>
     ${players.map((player, i) => `
       <div class="player-input-row mb-2 flex items-center gap-2">
         <label for="player-words-${i}" class="font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center">${player}${player === dealer ? `<span class="dealer-indicator ml-0.5" aria-label="Deals this round" title="Deals this round">${DEALER_EMOJI}</span>` : ''}</label>
         <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
+        <button type="button" class="submit-player-btn px-2 py-1 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded" data-player="${player}" title="Submit ${player}'s play">Submit</button>
       </div>
     `).join('')}`;
-  // ...existing code...
   document.getElementById('scoreInputs')?.classList.remove('hidden');
   document.querySelectorAll('.player-words').forEach(inp => {
     inp.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        if (!gameOver) nextRound();
+        if (!gameOver) submitPlayerPlay(inp.dataset.player);
       }
+    });
+  });
+  document.querySelectorAll('.submit-player-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!gameOver) submitPlayerPlay(btn.dataset.player);
     });
   });
   const firstInput = document.querySelector('.player-words');
@@ -322,90 +364,93 @@ function setupRound() {
   currentDealerIdx++;
 }
 
-/**
- * True if a bare word (parentheses removed) exists in the word list.
- */
-function validateWordLocal(word) {
-  const cleanedWord = plainWord(word).toUpperCase();
-  return validWordsMap.hasOwnProperty(cleanedWord);
-}
-
-// NEW: async API validation with fallback to local & caching
-// Unified cache with dictionary_api.js (FD_STATUS_CACHE on window.__FDStatusCache)
-// Removed local apiValidateCache; reuse shared cache so solver & game share results.
-async function validateWordAPI(word) {
-  const cleaned = plainWord(word).toLowerCase();
-  if (!cleaned) return false;
-  const upper = cleaned.toUpperCase();
-  // Access shared cache (boolean or Promise) if available
-  const sharedCache = (typeof window !== 'undefined' && window.__FDStatusCache) ? window.__FDStatusCache : (globalThis.__FDStatusCache ||= Object.create(null));
-
-  // Local dictionary gate first
-  const localValid = validateWordLocal(word);
-  if (!localValid) {
-    sharedCache[upper] = false; // authoritative (Collins invalid)
-    return false;
-  }
-
-  // Cache hit (boolean)
-  const existing = sharedCache[upper];
-  if (typeof existing === 'boolean') return existing;
-  // In-flight promise
-  if (existing && typeof existing.then === 'function') return existing;
-
-  // Create in-flight promise, optimistic fallback on network error
-  const prom = (async () => {
-    try {
-      const { error, found } = await getWordDefinitionAPI(cleaned);
-      if (error) return true;      // treat transient/network error as valid (fallback to local)
-      return !!found;              // definitive 404 => false
-    } catch {
-      return true;                        // exception -> optimistic
-    }
-  })();
-  sharedCache[upper] = prom;
-  const resolved = await prom;
-  sharedCache[upper] = resolved; // replace promise with boolean
-  return resolved;
-}
-
-// ...existing code...
-// Removed validateWordAPIBatch (moved back to dictionary_api.js)
-// ...existing code...
-
-/**
- * Read all players' inputs for the round, store, recalc totals, and advance.
- */
-function nextRound() {
-  if (gameOver) return; // do nothing if game has ended
-  const roundDealer = players[(currentDealerIdx - 1 + players.length) % players.length];
-  const round = { roundNum: currentRound, dealer: roundDealer, players: {} };
-
-  document.querySelectorAll('.player-words').forEach(input => {
-    const player = input.dataset.player;
-    const words = input.value.trim().split(/\s+/).filter(w => w);
-    round.players[player] = words.map(word => ({
-      text: word,
-      score: scoreForChit(word),
-      state: word.startsWith('-') ? 'invalid' : 'neutral',
-      challenger: null
-    }));
+// NEW: Rebuild current round input UI from an existing unfinalized round (on reload)
+function rebuildInputsFromExistingRound(round) {
+  if (!round) return;
+  const dealer = round.dealer;
+  document.getElementById('roundHeader').innerText = `Round ${round.roundNum} Cards`;
+  document.getElementById('scoreInputs').innerHTML = `
+    <div class="text-sm text-gray-500 mb-2">Round in progress. Edit & resubmit a single player as needed; challenges reset for that player's changed words. Enter submits just that player.</div>
+    ${players.map((player, i) => {
+      const existing = (round.players[player] || []).map(w=>w.text).join(' ');
+      return `
+      <div class=\"player-input-row mb-2 flex items-center gap-2\">
+        <label for=\"player-words-${i}\" class=\"font-semibold w-24 md:w-28 lg:w-32 shrink-0 whitespace-nowrap overflow-hidden text-ellipsis pr-1 flex items-center\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-0.5\" aria-label=\"Deals this round\" title=\"Deals this round\">${DEALER_EMOJI}</span>` : ''}</label>
+        <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\">
+        <button type=\"button\" class=\"submit-player-btn px-2 py-1 text-sm bg-emerald-600 hover:bg-emerald-700 text-white rounded\" data-player=\"${player}\" title=\"Submit ${player}'s play\">Submit</button>
+      </div>`;
+    }).join('')}`;
+  document.getElementById('scoreInputs')?.classList.remove('hidden');
+  document.querySelectorAll('.player-words').forEach(inp => {
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); if (!gameOver) submitPlayerPlay(inp.dataset.player); }
+    });
   });
+  document.querySelectorAll('.submit-player-btn').forEach(btn => {
+    btn.addEventListener('click', () => { if (!gameOver) submitPlayerPlay(btn.dataset.player); });
+  });
+}
 
-  roundsData.push(round);
-
-  recalculateScores();
-  updatePreviousRounds();
-
-  if (currentRound < maxRound) {
-    currentRound += 1;
-    setupRound();
-  } else {
-    // End of game: show summary modal (completed all rounds)
-    endGame(true);
+// PARTIAL ROUND: per-player submission
+function submitPlayerPlay(playerName) {
+  if (gameOver || !playerName) return;
+  // Find existing unfinalized round for currentRound
+  let round = roundsData.find(r => r.roundNum === currentRound && r.finalized === false);
+  if (!round) {
+    // Create new in-progress round (first submission for this round)
+    const roundDealer = players[(currentDealerIdx - 1 + players.length) % players.length];
+    round = { roundNum: currentRound, dealer: roundDealer, players: {}, finalized: false, submittedPlayers: {} };
+    // Seed empty arrays for consistency
+    players.forEach(p => round.players[p] = round.players[p] || []);
+    roundsData.push(round);
   }
-  // Ensure latest round number (after possible increment) is saved
+  // Read input value for this player
+  let inputEl = null;
+  document.querySelectorAll('.player-words').forEach(inp => { if (inp.dataset.player === playerName) inputEl = inp; });
+  const text = (inputEl?.value || '').trim();
+  const words = text ? text.split(/\s+/).filter(Boolean) : [];
+  // Replace player's row; clear any previous challenges by constructing fresh objects
+  round.players[playerName] = words.map(word => ({
+    text: word,
+    score: scoreForChit(word),
+    state: word.startsWith('-') ? 'invalid' : 'neutral',
+    challenger: null
+  }));
+  // Mark submitted even if blank (explicit clear). Blank wipes prior words.
+  round.submittedPlayers[playerName] = true;
+
+  recalculateScores(); // dynamic bonuses allowed
+  updatePreviousRounds();
   saveGameState();
+
+  // Auto-finalize when all players submitted
+  const allSubmitted = players.every(p => round.submittedPlayers[p]);
+  if (allSubmitted) {
+    round.finalized = true;
+    recalculateScores();
+    updatePreviousRounds();
+    saveGameState();
+    if (currentRound < maxRound) {
+      currentRound += 1;
+      setupRound();
+      saveGameState();
+    } else {
+      endGame(true);
+    }
+    return; // stop focusing logic; new round (or game end) handled
+  }
+
+  // Focus next blank/unsubmitted input for convenience
+  const inputs = Array.from(document.querySelectorAll('.player-words'));
+  for (const inp of inputs) {
+    const p = inp.dataset.player;
+    const val = inp.value.trim();
+    if (!round.submittedPlayers[p] || val === '') { // not yet submitted or still blank
+      inp.focus();
+      inp.select?.();
+      break;
+    }
+  }
 }
 
 // ---------- Helpers ----------
@@ -628,6 +673,13 @@ function saveEdit(player, roundIdx, btn) {
     challenger: null
   }));
 
+  // If editing an unfinalized round, mark that player as submitted (re)submitted
+  const r = roundsData[roundIdx];
+  if (r && r.finalized === false) {
+    r.submittedPlayers = r.submittedPlayers || {};
+    r.submittedPlayers[player] = true;
+  }
+
   recalculateScores();
   updatePreviousRounds();
 }
@@ -677,15 +729,26 @@ function toggleChallenge(btn, e) {
   challengerDropdown.onchange = async function() {
     if (this.value === '') { this.remove(); return; }
     if (this.value !== 'null') wordObj.challenger = this.value;
-    // If using API, mark as checking and re-render spinner first
     if (dictSource === 'api') {
       wordObj.state = 'checking';
       updatePreviousRounds();
       try {
-        const ok = await validateWordAPI(wordObj.text);
-        wordObj.state = ok ? 'valid' : 'invalid';
-      } catch (err) {
-        console.warn('Validation error (api)', err);
+        const plain = wordObj.text
+          .replace(/\([^)]*\)/g, m => m.replace(/[()]/g,''))
+          .replace(/[()]/g,'')
+          .replace(/[^A-Za-z]/g,'')
+          .toLowerCase();
+        if (!plain) {
+          wordObj.state = 'invalid';
+        } else {
+          const { found, error } = await getWordDefinitionAPI(plain);
+          if (error) {
+            wordObj.state = validateWordLocal(wordObj.text) ? 'valid' : 'invalid';
+          } else {
+            wordObj.state = found ? 'valid' : 'invalid';
+          }
+        }
+      } catch {
         wordObj.state = validateWordLocal(wordObj.text) ? 'valid' : 'invalid';
       }
       recalculateScores();
@@ -839,7 +902,6 @@ if (typeof window !== 'undefined') {
     startGame,
     setupRound,
     validateWordLocal,
-    nextRound,
     recalculateScores,
     prefillPlayFor,
     enterEditMode,
@@ -851,7 +913,9 @@ if (typeof window !== 'undefined') {
     endGame,
     closeEndGameDialog,
     resetToPreGame,
-    // removed restartSameSettings export
+    submitPlayerPlay, // NEW export
+    rebuildInputsFromExistingRound, // NEW export
+    getWordDefinitionAPI // NEW: re-export API lookup helper
   });
 
   // Read-only getters for state

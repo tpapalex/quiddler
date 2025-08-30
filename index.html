@@ -6,7 +6,7 @@
       1) Data: collins_dictionary.js, card_scores.js, common_lemmas.js
       2) ESM: wink-lemmatizer (needed by Solver common-word filter)
       3) App: dictionary_api.js, scoring.js, render.js, optimizer.js, game.js, tools_drawer.js
-  - Entry points used by the page: startGame(), nextRound(), initToolsDrawer()
+  - Entry points used by the page: startGame(), initToolsDrawer() (rounds auto-advance after all players submit now)
 -->
 <html lang="en">
 <head>
@@ -80,7 +80,6 @@
 
             <!-- Actions -->
             <div class="mt-3 flex items-center gap-2">
-              <button id="submitRoundBtn" class="bg-blue-500 text-white py-2 px-4 rounded">Submit Round</button>
               <button id="newGameBtn" class="bg-blue-500 text-white py-2 px-4 rounded">New Game</button>
             </div>
 
@@ -297,9 +296,6 @@
       // Wire buttons to namespaced APIs (fallback to globals during migration)
       document.getElementById('gameGo')?.addEventListener('click', () => {
         (window.QuiddlerGame?.startGame || window.startGame)?.();
-      });
-      document.getElementById('submitRoundBtn')?.addEventListener('click', () => {
-        (window.QuiddlerGame?.nextRound || window.nextRound)?.();
       });
       document.getElementById('newGameBtn')?.addEventListener('click', () => {
         (window.QuiddlerGame?.resetToPreGame)?.();
