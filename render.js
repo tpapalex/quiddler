@@ -260,11 +260,12 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedC
 }
 
 // Render a whole round block (interactive or static)
-function renderRound(round, roundIdx, {interactive = true} = {}) {
+function renderRound(round, roundIdx, {interactive = true, topBorder = false} = {}) {
   // Maps current global players order to rows for this round
   if (round && round.skipped) {
+    const borderTopClasses = topBorder ? 'border-t pt-4' : '';
     return `
-      <div class="my-4 flex gap-4 border-b border-gray-200 pb-4">
+      <div class="my-4 flex gap-4 border-b border-gray-200 pb-4 ${borderTopClasses}">
         <div class="font-semibold min-w-[50px] flex items-center justify-center text-lg">${round.roundNum}${window.QuiddlerGame.CARD_EMOJI}</div>
         <div class="flex items-center text-gray-500 italic">Skipped</div>
       </div>
@@ -277,8 +278,9 @@ function renderRound(round, roundIdx, {interactive = true} = {}) {
   const rows = playerList
     .map(player => renderPlayerRow(roundIdx, player, round.players[player], {interactive, expectedCards: round.roundNum, round}))
     .join('');
+  const borderTopClasses = topBorder ? 'border-t pt-4' : '';
   return `
-    <div class="my-4 flex gap-4 border-b border-gray-200 pb-4">
+    <div class="my-4 flex gap-4 border-b border-gray-200 pb-4 ${borderTopClasses}">
       <div class="font-semibold min-w-[50px] flex items-center justify-center text-lg">${round.roundNum}${window.QuiddlerGame.CARD_EMOJI}</div>
       <div class="flex flex-col gap-2">
         ${rows}

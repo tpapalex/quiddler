@@ -461,7 +461,7 @@ function setupRound() {
 
   // UPDATED LAYOUT: grid with auto-sized first column (max-content), shared alignment
   document.getElementById('scoreInputs').innerHTML = `
-    <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Round auto-advances after all players submit.</div>
+    <div class="text-sm text-gray-500 mb-2">Enter words separated by spaces (parentheses for digraphs, '-' prefix for unused). Round auto-advances after all players submit a play.</div>
     <div class="player-input-grid grid grid-cols-[max-content_1fr] gap-x-2 gap-y-2 items-center">
       ${players.map((player, i) => `
         <div class="player-input-row contents">
@@ -1118,7 +1118,8 @@ function updatePreviousRounds() {
     .reverse()
     .map((round, revIdx) => {
       const roundIdx = roundsData.length - 1 - revIdx;
-      return (window.QuiddlerRender?.renderRound || renderRound)(round, roundIdx, { interactive: true });
+      const topBorder = revIdx === 0; // latest round gets top separator
+      return (window.QuiddlerRender?.renderRound || renderRound)(round, roundIdx, { interactive: true, topBorder });
     })
     .join('');
 
