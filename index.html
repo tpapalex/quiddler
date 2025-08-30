@@ -38,6 +38,13 @@
 
             <!-- Bonus settings -->
             <div class="mt-2 space-y-2">
+                <div class="flex items-center flex-wrap gap-2">
+                  <span>Play with</span>
+                  <input id="startCards" type="number" min="3" max="30" value="3" class="w-16 border rounded p-1 text-right" aria-label="Starting number of cards">
+                  <span>to</span>
+                  <input id="endCards" type="number" min="1" max="30" value="10" class="w-16 border rounded p-1 text-right" aria-label="Ending number of cards">
+                  <span>cards</span>
+                </div>
                 <div class="flex items-center gap-2">
                     <input type="checkbox" id="longestWordBonus">
                     <label for="longestWordBonus">Longest Word Bonus 🦒</label>
@@ -52,25 +59,11 @@
                         class="w-16 border rounded p-1">
                     <span>points</span>
                 </div>
-                <!-- New: starting / ending number of cards -->
-                <div class="flex items-center flex-wrap gap-2">
-                  <span>Play with</span>
-                  <input id="startCards" type="number" min="3" max="30" value="3" class="w-16 border rounded p-1 text-right" aria-label="Starting number of cards">
-                  <span>to</span>
-                  <input id="endCards" type="number" min="1" max="30" value="10" class="w-16 border rounded p-1 text-right" aria-label="Ending number of cards">
-                  <span>cards</span>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="dictApiAlso">
+                    <label for="dictApiAlso">Also validate with Free Dictionary API</label>
                 </div>
-                <fieldset class="flex flex-wrap items-center gap-4">
-                  <!-- <span class="mr-1">Use</span> -->
-                  <label class="inline-flex items-center gap-1">
-                    <input type="radio" name="dictSource" id="dictLocalRadio" value="local" checked>
-                    <span>Collins '19 Dictionary</span>
-                  </label>
-                  <label class="inline-flex items-center gap-1">
-                    <input type="radio" name="dictSource" id="dictApiRadio" value="api">
-                    <span>Free Dictionary API</span>
-                  </label>
-                </fieldset>
+                <div class="text-xs text-gray-500 ml-1">Always validates with Collins ’19 list.</div>
             </div>
 
             <!-- Start Game button -->
@@ -164,7 +157,7 @@
             </div>
             <!-- Online definition -->
             <div id="dictOnlineWrap" class="hidden">
-              <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">Online Dictionary</div>
+              <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">Free Dictionary API</div>
               <div id="dictOnline" class="text-sm text-gray-800"></div>
             </div>
             <!-- Loading -->

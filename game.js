@@ -153,13 +153,9 @@ function loadGameState() {
     const ec = document.getElementById('endCards');
     if (sc) { sc.value = startCards; sc.disabled = true; }
     if (ec) { ec.value = maxRound; ec.disabled = true; }
-    // NEW: reflect dict source radios
-    const dl = document.getElementById('dictLocalRadio');
-    const da = document.getElementById('dictApiRadio');
-    if (dl && da) {
-      if (dictSource === 'api') da.checked = true; else dl.checked = true;
-      dl.disabled = true; da.disabled = true;
-    }
+    // NEW: reflect dict source radios -> replaced with single checkbox
+    const apiAlso = document.getElementById('dictApiAlso');
+    if (apiAlso) { apiAlso.checked = (dictSource === 'api'); apiAlso.disabled = true; }
 
     document.getElementById('preGameConfig')?.classList.add('hidden');
     document.getElementById('gameArea')?.classList.remove('hidden');
@@ -233,7 +229,7 @@ function startGame() {
   }
   startCards = rawStart;
   maxRound = rawEnd;
-  dictSource = document.querySelector('input[name="dictSource"]:checked')?.value === 'api' ? 'api' : 'local';
+  dictSource = document.getElementById('dictApiAlso')?.checked ? 'api' : 'local';
 
   // Reset all global variables to initial state (after validation)
   gameStarted = true;
@@ -258,7 +254,7 @@ function startGame() {
   document.getElementById('mostWordsPoints').disabled = true;
   document.getElementById('startCards').disabled = true; // NEW
   document.getElementById('endCards').disabled = true;   // NEW
-  const dl = document.getElementById('dictLocalRadio'); const da = document.getElementById('dictApiRadio'); if (dl) dl.disabled = true; if (da) da.disabled = true; // NEW
+  const apiAlso = document.getElementById('dictApiAlso'); if (apiAlso) apiAlso.disabled = true; // UPDATED
   document.getElementById('preGameConfig')?.classList.add('hidden');
 
   // Clear previous game state from UI
@@ -924,7 +920,7 @@ function resetToPreGame() {
   document.getElementById('mostWordsPoints').disabled = false;
   document.getElementById('startCards').disabled = false;  // NEW
   document.getElementById('endCards').disabled = false;    // NEW
-  const dl2 = document.getElementById('dictLocalRadio'); const da2 = document.getElementById('dictApiRadio'); if (dl2) dl2.disabled = false; if (da2) da2.disabled = false; // NEW
+  const apiAlso2 = document.getElementById('dictApiAlso'); if (apiAlso2) apiAlso2.disabled = false; // UPDATED
 
   // Reset primary CTA label
   const go = document.getElementById('gameGo');

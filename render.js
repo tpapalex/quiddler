@@ -28,8 +28,14 @@ function renderChit(word, opts = {}) {
   } = opts;
 
   const effectiveState = forceState ?? word.state;
+  // Build tooltip content (score breakdown + optional challenger)
+  let tipContent = breakdownStr(word.text);
+  if (word.challenger) {
+    const chall = String(word.challenger).replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    tipContent = `${tipContent}<br><span class=\"text-xs text-gray-500\">Challenged by ${chall}</span>`;
+  }
   const tooltipAttr = showBreakdown
-    ? `data-tippy-content="${breakdownStr(word.text).replace(/"/g, '&quot;')}"`
+    ? `data-tippy-content="${tipContent.replace(/"/g, '&quot;')}"`
     : '';
 
   const colorClass =
