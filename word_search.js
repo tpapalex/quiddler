@@ -725,6 +725,84 @@ function rackMaxLengthSubanagram(pattern) {
   let total=0; for (const t of tokens) total += t.length; return total;
 }
 
+function rackCountsForPattern(pattern) {
+  // Reuse solver's canonical countRack to avoid divergence.
+  const tokens = parseCards(pattern).map(normalizeToken);
+  return countRack(tokens, DIGRAPHS);
+}
+
+function canFormWordFromRack(word, rackCounts) {
+  // Quick letter availability check combining singles+digraph contributions
+  const need = Object.create(null);
+  for (const c of word) need[c]=(need[c]||0)+1;
+  for (const [ch, cnt] of Object.entries(need)) {
+    let avail = (rackCounts.singleCounts[ch]||0);
+    for (const [dg, c] of Object.entries(rackCounts.digraphCounts)) if (dg.includes(ch)) avail += c; // upper bound
+    if (cnt > avail) return false;
+  }
+  // Backtracking exact cover using tokens
+  const singles = { ...rackCounts.singleCounts };
+  const digraphs = { ...rackCounts.digraphCounts };
+  const dgList = Object.keys(digraphs).filter(d=>digraphs[d]>0);
+  const memo = new Map();
+  function key(i) {
+    // compact key: i + serialized remaining digraph counts + first few singles counts for pruning
+    let k = i+':';
+    for (const dg of dgList) k+=dg+digraphs[dg]+';';
+    // Optionally include remaining counts of letters in need subset to improve pruning
+    return k;
+  }
+  function dfs(i) {
+    if (i===word.length) return true;
+    const k=key(i); if (memo.has(k)) return false; // only memo failures; successes return early
+    const ch = word[i];
+    // Try digraphs first (sometimes reduces branching)
+    for (const dg of dgList) {
+      const left = digraphs[dg]; if (left<=0) continue;
+      if (word.startsWith(dg, i)) {
+        digraphs[dg]--; if (dfs(i+dg.length)) return true; digraphs[dg]++;
+      }
+    }
+    // Single letter option
+    if ((singles[ch]||0) > 0) {
+      singles[ch]--; if (dfs(i+1)) return true; singles[ch]++;
+    }
+    memo.set(k,false); return false;
+  }
+  return dfs(0);
+}
+
+// Lightweight upper-bound feasibility (no backtracking) used for quick pruning.
+function quickLetterUpperBoundFeasible(word, rackCounts) {
+  const need = Object.create(null);
+  for (const c of word) need[c] = (need[c] || 0) + 1;
+  for (const [ch, cnt] of Object.entries(need)) {
+    let avail = (rackCounts.singleCounts[ch] || 0);
+    for (const [dg, c] of Object.entries(rackCounts.digraphCounts)) if (dg.includes(ch)) avail += c;
+    if (cnt > avail) return false;
+  }
+  return true;
+}
+
+// Heuristic: lower score => better (smaller branching) rack for base enumeration.
+function scoreRackForEnumeration(rackCounts) {
+  // Distinct token types (singles + digraphs) primary driver.
+  let distinct = Object.keys(rackCounts.singleCounts).length + Object.keys(rackCounts.digraphCounts).length;
+  // Total tiles (not letters) – larger adds branching.
+  let totalTiles = 0; for (const v of Object.values(rackCounts.singleCounts)) totalTiles += v; for (const v of Object.values(rackCounts.digraphCounts)) totalTiles += v;
+  // Vowel abundance increases branching slightly.
+  const vowels = ['a','e','i','o','u'];
+  let vowelTiles = 0; for (const v of vowels) vowelTiles += (rackCounts.singleCounts[v]||0);
+  // Rare letters reduce branching (acts as anchor); subtract weight if present.
+  const rareSet = ['q','z','j','x'];
+  let rareBonus = 0; for (const r of rareSet) if ((rackCounts.singleCounts[r]||0) > 0) rareBonus += 1;
+  // Digraph presence (esp. qu, th, ch, sh) also anchors.
+  let digraphBonus = 0; for (const dg of Object.keys(rackCounts.digraphCounts)) { if (/qu|th|ch|sh|ph|wh/.test(dg)) digraphBonus += 0.5; }
+  // Score formula (tuned heuristically):
+  const score = distinct*50 + totalTiles*10 + vowelTiles*5 - rareBonus*30 - digraphBonus*15;
+  return score;
+}
+
 function searchMulti(specs, { returnWords=false, debug=false } = {}) {
   ensureInit();
   if (!Array.isArray(specs)) return { ok:false, errors:[vErr('invalid-args','Specs must be an array')] };
@@ -768,6 +846,7 @@ function searchMulti(specs, { returnWords=false, debug=false } = {}) {
     } else if (type==='subanagram') {
       const rackMax = rackMaxLengthSubanagram(valRes.normalized);
       inherentMin = 0; inherentMax = rackMax; // we don't assume min; could add option
+  meta.rackCounts = rackCountsForPattern(valRes.normalized);
     }
 
     // apply to global bounds
@@ -818,6 +897,30 @@ function searchMulti(specs, { returnWords=false, debug=false } = {}) {
 
   executables.sort((a,b)=> rank(a)-rank(b));
 
+  // Sub-anagram base rack selection: choose the one with lowest enumeration score among sub-anagram specs.
+  const subSpecs = executables.filter(s => s.type==='subanagram');
+  if (subSpecs.length > 1) {
+    for (const s of subSpecs) {
+      if (!s.meta.rackCounts) s.meta.rackCounts = rackCountsForPattern(s.normalized);
+      s.meta.enumerationScore = scoreRackForEnumeration(s.meta.rackCounts);
+    }
+    let best = subSpecs[0];
+    for (const s of subSpecs) if (s.meta.enumerationScore < best.meta.enumerationScore) best = s;
+    // Ensure best is earliest among subanagrams while keeping earlier higher-selectivity types (anagram/literal regex) ahead.
+    const firstIdx = executables.findIndex(s => s.type==='subanagram');
+    const bestIdx = executables.indexOf(best);
+    if (bestIdx !== -1 && firstIdx !== -1 && bestIdx !== firstIdx) {
+      const tmp = executables[firstIdx];
+      executables[firstIdx] = executables[bestIdx];
+      executables[bestIdx] = tmp;
+    }
+    best.meta.isBaseSub = true;
+  } else if (subSpecs.length === 1) {
+    // Single subanagram automatically base.
+    subSpecs[0].meta.enumerationScore = scoreRackForEnumeration(subSpecs[0].meta.rackCounts || rackCountsForPattern(subSpecs[0].normalized));
+    subSpecs[0].meta.isBaseSub = true;
+  }
+
   let current = null;
   const plan=[];
 
@@ -825,6 +928,8 @@ function searchMulti(specs, { returnWords=false, debug=false } = {}) {
     let produced=[];
     const t=spec.type;
     const minLen = globalMin, maxLen = globalMax;
+  let action='enumerate';
+  if (t==='subanagram' && spec.meta && spec.meta.isBaseSub) action='enumerate-base';
     if (t==='regex') {
       // literal: direct lookup + length check
       if (spec.meta.parsed.type==='literal') {
@@ -869,13 +974,54 @@ function searchMulti(specs, { returnWords=false, debug=false } = {}) {
       if (!cached) { cached = searchAnagrams(spec.normalized, { minLen, maxLen }); __anagramCache.set(spec.normalized, cached); }
       produced = cached;
     } else if (t==='subanagram') {
-      let cached = __subanaCache.get(spec.normalized);
-      if (!cached) { cached = searchSubanagrams(spec.normalized, { minLen, maxLen }); __subanaCache.set(spec.normalized, cached); }
-      produced = cached;
+      const rackCounts = spec.meta.rackCounts || rackCountsForPattern(spec.normalized);
+      // Decide enumeration vs filter dynamically if we already have a candidate set and this is not marked base.
+      if (current && !spec.meta.isBaseSub) {
+        // Heuristic: if current set small, filtering cheaper; else consider enumerating if rack small.
+        const enumScore = spec.meta.enumerationScore != null ? spec.meta.enumerationScore : (spec.meta.enumerationScore = scoreRackForEnumeration(rackCounts));
+        const FILTER_THRESHOLD = 2500; // size above which pure filtering may be slower
+        const ENUM_SCORE_CUTOFF = 800; // rough heuristic for 'small' rack
+        if (current.length > FILTER_THRESHOLD && enumScore < ENUM_SCORE_CUTOFF) {
+          action='enumerate';
+        } else {
+          action='filter';
+        }
+      }
+      if (action==='filter') {
+        const out=[];
+        for (const idx of current) {
+          const w = WORD_LIST[idx];
+          if (w.length < minLen || w.length > maxLen) continue;
+          if (canFormWordFromRack(w, rackCounts)) out.push(idx);
+        }
+        produced = out;
+      } else {
+        let cached = __subanaCache.get(spec.normalized);
+        if (!cached) { cached = searchSubanagrams(spec.normalized, { minLen, maxLen }); __subanaCache.set(spec.normalized, cached); }
+        produced = cached;
+        // Early pruning using other subanagram racks (upper-bound feasibility only) if this is the designated base.
+        if (spec.meta.isBaseSub) {
+          const otherSubRacks = executables.filter(s => s!==spec && s.type==='subanagram').map(s => s.meta.rackCounts || rackCountsForPattern(s.normalized));
+            if (otherSubRacks.length) {
+            const pre = produced.length;
+            const pruned=[];
+            for (const idx of produced) {
+              const w = WORD_LIST[idx];
+              let ok = true;
+              for (const rc of otherSubRacks) { if (!quickLetterUpperBoundFeasible(w, rc)) { ok=false; break; } }
+              if (ok) pruned.push(idx);
+            }
+            if (pruned.length !== produced.length) {
+              spec.meta.prunedByOtherSubanagrams = pre - pruned.length;
+              produced = pruned;
+            }
+          }
+        }
+      }
     }
     produced = uniqueSorted(produced);
-    const after = current ? intersectSorted(current, produced) : produced;
-    plan.push({ type:t, pattern: spec.pattern, normalized: spec.normalized, produced: produced.length, before: current ? current.length : null, after: after.length, rank: rank(spec) });
+    const after = current ? (action==='filter' ? produced : intersectSorted(current, produced)) : produced;
+    plan.push({ type:t, pattern: spec.pattern, normalized: spec.normalized, produced: produced.length, before: current ? current.length : null, after: after.length, rank: rank(spec), action });
     current = after;
     if (!current.length) break;
   }
