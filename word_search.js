@@ -346,7 +346,8 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
         const bucket = WORDS_BY_LENGTH[L]; if (!bucket) continue;
         out.push(...bucket);
       }
-      return out;
+  if (out.length > 1) out.sort((a,b)=>a-b);
+  return out;
     }
     case 'prefix': {
       const prefix = p.data.prefix;
@@ -359,7 +360,8 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
           if (w.startsWith(prefix)) out.push(idx);
         }
       }
-      return out;
+  if (out.length > 1) out.sort((a,b)=>a-b);
+  return out;
     }
     case 'suffix': {
       const suffix = p.data.suffix;
@@ -372,7 +374,8 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
           if (w.endsWith(suffix)) out.push(idx);
         }
       }
-      return out;
+  if (out.length > 1) out.sort((a,b)=>a-b);
+  return out;
     }
     case 'contains': {
       const sub = p.data.substring;
@@ -383,7 +386,8 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
           if (w.indexOf(sub) !== -1) out.push(idx);
         }
       }
-      return out;
+  if (out.length > 1) out.sort((a,b)=>a-b);
+  return out;
     }
     case 'prefixSuffix': {
       const { prefix, suffix, gapMin, unboundedGap } = p.data;
@@ -400,7 +404,8 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
           out.push(idx);
         }
       }
-      return out;
+  if (out.length > 1) out.sort((a,b)=>a-b);
+  return out;
     }
     case 'mask': {
       const { length, runs } = p.data;
@@ -423,7 +428,8 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
           const w = WORD_LIST[idx]; if (regex.test(w)) out.push(idx);
         }
       }
-      return out;
+    if (out.length > 1) out.sort((a,b)=>a-b);
+        return out;
     }
     default: return [];
   }
@@ -803,10 +809,17 @@ function scoreRackForEnumeration(rackCounts) {
   return score;
 }
 
-function searchMulti(specs, { returnWords=false, debug=false } = {}) {
+// searchMulti(specs, { sortMode } = {})
+//  - specs: array of spec objects (same as before)
+//  - sortMode values:
+//       'len+', 'len-' (length ascending / descending; ties alpha ascending)
+//       'alpha+', 'alpha-' (alphabetical ascending / descending)
+//    Aliases: 'length+', 'length-', 'length-asc', 'length-desc', 'alpha', 'alpha-asc', 'alpha-desc'
+//  - Always returns words now (previous returnWords/debug removed).
+function searchMulti(specs, { sortMode } = {}) {
   ensureInit();
   if (!Array.isArray(specs)) return { ok:false, errors:[vErr('invalid-args','Specs must be an array')] };
-  if (!specs.length) return { ok:true, indices:[], words: returnWords?[]:undefined, plan:[], minLen:0, maxLen:Infinity };
+  if (!specs.length) return { ok:true, indices:[], words: [], plan:[], minLen:0, maxLen:Infinity };
 
   const errors=[]; const norm=[]; // normalized specs
   let globalMin=0, globalMax=Infinity;
@@ -871,9 +884,12 @@ function searchMulti(specs, { returnWords=false, debug=false } = {}) {
   if (!executables.length) {
     // Only length constraints; return all word indices within bounds
     const out=[]; for (let L=globalMin; L<=globalMax && L<WORDS_BY_LENGTH.length; L++) { const b=WORDS_BY_LENGTH[L]; if (b) out.push(...b); }
-    const indices = uniqueSorted(out);
-    const words = returnWords ? getWords(indices) : undefined;
-    return { ok:true, indices, words, plan:[{ type:'length-only', globalMin, globalMax, produced: indices.length, after: indices.length }], minLen:globalMin, maxLen:globalMax };
+  // out is concatenation of per-length sorted buckets but not globally sorted; sort to preserve contract
+  out.sort((a,b)=>a-b);
+  const indices = uniqueSorted(out);
+    let words = getWords(indices);
+    ({ indices, words } = applySearchMultiSorting(indices, words, sortMode));
+    return { ok:true, indices, words, plan:[{ type:'length-only', globalMin, globalMax, produced: indices.length, after: indices.length }], minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
   }
 
   function rank(s) {
@@ -1026,9 +1042,40 @@ function searchMulti(specs, { returnWords=false, debug=false } = {}) {
     if (!current.length) break;
   }
 
-  const indices = current || [];
-  const words = returnWords ? getWords(indices) : undefined;
-  return { ok:true, indices, words, plan, minLen:globalMin, maxLen:globalMax };
+  let indices = current || [];
+  let words = getWords(indices);
+  ({ indices, words } = applySearchMultiSorting(indices, words, sortMode));
+  return { ok:true, indices, words, plan, minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
+}
+
+function normalizeSortMode(mode) {
+  if (!mode) return null;
+  const m = String(mode).toLowerCase().trim();
+  if (['len+','length+','length-asc','len-asc','length','len','lengthasc'].includes(m)) return 'len+';
+  if (['len-','length-','length-desc','len-desc','lengthdesc'].includes(m)) return 'len-';
+  if (['alpha+','alpha','alpha-asc','a+','a-asc'].includes(m)) return 'alpha+';
+  if (['alpha-','alpha-desc','a-','a-desc'].includes(m)) return 'alpha-';
+  return null; // unknown -> no sorting
+}
+
+function applySearchMultiSorting(indices, words, sortMode) {
+  const mode = normalizeSortMode(sortMode);
+  if (!mode) return { indices, words }; // no sorting requested or unknown code
+  const pairs = indices.map((idx,i)=>({ idx, word: words[i] }));
+  const alphaAsc = (a,b)=> a.word < b.word ? -1 : a.word > b.word ? 1 : 0;
+  if (mode === 'len+') {
+    pairs.sort((a,b)=> (a.word.length - b.word.length) || alphaAsc(a,b));
+  } else if (mode === 'len-') {
+    pairs.sort((a,b)=> (b.word.length - a.word.length) || alphaAsc(a,b));
+  } else if (mode === 'alpha+') {
+    pairs.sort(alphaAsc);
+  } else if (mode === 'alpha-') {
+    pairs.sort((a,b)=> -alphaAsc(a,b));
+  }
+  return {
+    indices: pairs.map(p=>p.idx),
+    words: pairs.map(p=>p.word)
+  };
 }
 
 // Namespace export (browser/global)
