@@ -20,6 +20,7 @@ let __initialized = false;
 let WORD_LIST = [];                // Array<string> lowercase words
 let WORD_TO_INDEX = null;          // Map<string, number>
 let WORDS_BY_LENGTH = [];          // Array<Array<number>>; index by length -> sorted arrays of word indices
+let ANAGRAM_INDEX = null;          // Map<string, Array<number>> signature -> sorted word indices (anagrams)
 
 function ensureValidWordsMap() {
   if (typeof validWordsMap === 'undefined' || !validWordsMap) {
@@ -36,6 +37,7 @@ function buildIndices() {
   const keys = Object.keys(validWordsMap); // UPPERCASE dictionary keys
   WORD_LIST = keys.map(k => k.toLowerCase());
   WORD_TO_INDEX = new Map();
+  ANAGRAM_INDEX = new Map();
   // Ensure WORDS_BY_LENGTH has enough buckets; collect dynamically
   WORDS_BY_LENGTH = [];
 
@@ -46,11 +48,16 @@ function buildIndices() {
     if (!WORDS_BY_LENGTH[len]) WORDS_BY_LENGTH[len] = [];
     WORDS_BY_LENGTH[len].push(i);
 
-    // (No per-word signature or letter-count storage in this minimal phase.)
+  // Anagram signature (sorted letters). Simple O(L log L) once at build time.
+  const sig = w.split('').sort().join('');
+  const arr = ANAGRAM_INDEX.get(sig);
+  if (arr) arr.push(i); else ANAGRAM_INDEX.set(sig, [i]);
   }
 
   // Sort each length bucket for deterministic order
   for (const bucket of WORDS_BY_LENGTH) { if (Array.isArray(bucket)) bucket.sort((a,b)=>a-b); }
+  // Sort each anagram list (indices already ascending insertion by i, but keep safe if order changes later)
+  for (const list of ANAGRAM_INDEX.values()) { list.sort((a,b)=>a-b); }
 }
 
 function ensureInit() {
@@ -418,14 +425,85 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
   }
 }
 
+// ------------------ Anagram Search (with optional digraph tokens) ------------------
+// Supports input like:
+//   "past(er)"  -> letters p a s t e r with required digraph substring "er"
+//   "e(th)(er)" -> letters e t h e r with required digraphs "th" and "er"
+// Behavior:
+//   1. Expand all tokens into their letters (digraph tokens contribute their letters)
+//   2. Lookup candidate anagrams via letter multiset signature
+//   3. If digraph tokens were specified AND a global DIGRAPHS set exists and contains them, filter
+//      candidates requiring each digraph substring to appear at least the specified count (non-overlapping per digraph).
+//   4. If token text inside parentheses is not a known digraph, it is treated as plain letters.
+// Edge cases: unmatched '(' ignored; empty pattern returns [].
+function searchAnagrams(pattern) {
+  ensureInit();
+  if (pattern == null) return [];
+  const input = String(pattern).trim();
+  if (!input) return [];
+
+  const digraphsAvailable = (typeof DIGRAPHS !== 'undefined' && DIGRAPHS && typeof DIGRAPHS.has === 'function');
+  const digraphCounts = Object.create(null);
+  const letters = [];
+  let sawDigraphToken = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (ch === '(') {
+      const j = input.indexOf(')', i+1);
+      if (j === -1) continue; // skip unmatched
+      const token = input.slice(i+1, j).toLowerCase();
+      i = j; // advance
+      if (token) {
+        if (digraphsAvailable && DIGRAPHS.has(token)) {
+          digraphCounts[token] = (digraphCounts[token] || 0) + 1;
+          sawDigraphToken = true;
+          for (const c of token) letters.push(c);
+        } else {
+          // treat chars individually
+            for (const c of token) if (/[a-z]/.test(c)) letters.push(c);
+        }
+      }
+    } else if (/[a-z]/i.test(ch)) {
+      letters.push(ch.toLowerCase());
+    }
+  }
+
+  if (!letters.length) return [];
+  const sig = letters.sort().join('');
+  const candidates = ANAGRAM_INDEX.get(sig);
+  if (!candidates) return [];
+
+  const needFilter = sawDigraphToken && digraphsAvailable && Object.keys(digraphCounts).length;
+  if (!needFilter) return candidates.slice();
+
+  const out = [];
+  candidateLoop: for (const idx of candidates) {
+    const w = WORD_LIST[idx];
+    for (const [dg, need] of Object.entries(digraphCounts)) {
+      let found = 0; let pos = 0;
+      while (found < need) {
+        const p = w.indexOf(dg, pos);
+        if (p === -1) { found = -1; break; }
+        found++;
+        pos = p + dg.length; // non-overlapping occurrences for same digraph
+      }
+      if (found < need) continue candidateLoop;
+    }
+    out.push(idx);
+  }
+  return out;
+}
+
 // Namespace export (browser/global)
 const WordSearch = {
   init: ensureInit,
   stats,
   searchRegex,
+  searchAnagrams,
   getWords,
   // (internal/raw) - expose cautiously for debugging / future optimizations
-  _internal: () => ({ WORD_LIST, WORD_TO_INDEX, WORDS_BY_LENGTH })
+  _internal: () => ({ WORD_LIST, WORD_TO_INDEX, WORDS_BY_LENGTH, ANAGRAM_INDEX })
 };
 
 if (typeof window !== 'undefined') {
@@ -434,6 +512,7 @@ if (typeof window !== 'undefined') {
   window.wordSearchInit = ensureInit;
   window.wordSearchStats = stats;
   window.wordSearchRegex = searchRegex;
+  window.wordSearchAnagrams = searchAnagrams;
   window.wordSearchGetWords = getWords;
   window.parseSimplifiedRegex = parseSimplifiedRegex;
 } else {
@@ -441,6 +520,7 @@ if (typeof window !== 'undefined') {
   globalThis.wordSearchInit = ensureInit;
   globalThis.wordSearchStats = stats;
   globalThis.wordSearchRegex = searchRegex;
+  globalThis.wordSearchAnagrams = searchAnagrams;
   globalThis.wordSearchGetWords = getWords;
   globalThis.parseSimplifiedRegex = parseSimplifiedRegex;
 }
