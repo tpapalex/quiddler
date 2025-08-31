@@ -585,6 +585,84 @@ function validateAnagramLike(pattern, type) {
 function validateAnagrams(p) { return validateAnagramLike(p,'anagrams'); }
 function validateSubanagrams(p) { return validateAnagramLike(p,'subanagrams'); }
 
+// ------------------ Length Pattern Parsing & Validation ------------------
+// Supported syntaxes (whitespace ignored):
+//   n         exact length n (e.g. "3")
+//   n-m       inclusive range (e.g. "3-5")
+//   <=n       max length n
+//   >=n       min length n
+//   <n        max length n-1 (if n>0 else 0)
+//   >n        min length n+1
+//   n+        shorthand for >=n
+//   -n        shorthand for <=n
+// Additional accepted forms:
+//   m-        shorthand for >=m  (e.g. "5-" => >=5)
+// Returns { ok:true, minLen, maxLen, source, normalized } or { ok:false, errors:[...] }
+function parseLengthPattern(pattern) {
+  if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] };
+  const source = String(pattern);
+  const raw = source.trim();
+  if (!raw) return { ok:false, errors:[vErr('empty-pattern','Pattern is empty')] };
+  const p = raw.replace(/\s+/g,'');
+  const errors = [];
+  let minLen = 0, maxLen = Infinity;
+  const num = n => {
+    if (!/^\d+$/.test(n)) { errors.push(vErr('invalid-number','Invalid number',{ token:n })); return null; }
+    return parseInt(n,10);
+  };
+
+  function finish() {
+    if (errors.length) return { ok:false, errors };
+    if (minLen < 0) errors.push(vErr('neg-length','Negative length not allowed',{ minLen }));
+    if (maxLen < 0) errors.push(vErr('neg-length','Negative length not allowed',{ maxLen }));
+    if (minLen > maxLen) errors.push(vErr('range-order','Min length exceeds max length',{ minLen, maxLen }));
+    if (errors.length) return { ok:false, errors };
+    return { ok:true, minLen, maxLen, source, normalized:p };
+  }
+
+  // Exact n
+  if (/^\d+$/.test(p)) {
+    const n = num(p); if (n == null) return { ok:false, errors };
+    minLen = maxLen = n; return finish();
+  }
+  // Range n-m
+  if (/^(\d+)-(\d+)$/.test(p)) {
+    const [,a,b] = p.match(/^(\d+)-(\d+)$/);
+    const n1 = num(a), n2 = num(b); if (n1==null||n2==null) return { ok:false, errors };
+    minLen = n1; maxLen = n2; return finish();
+  }
+  // Open range m- (>= m)
+  if (/^(\d+)-$/.test(p)) {
+    const [,a] = p.match(/^(\d+)-$/); const n1 = num(a); if (n1==null) return { ok:false, errors };
+    minLen = n1; maxLen = Infinity; return finish();
+  }
+  // Shorthand -n (<= n)
+  if (/^-\d+$/.test(p)) {
+    const n = num(p.slice(1)); if (n==null) return { ok:false, errors };
+    minLen = 0; maxLen = n; return finish();
+  }
+  // >=n / <=n / >n / <n
+  if (/^(>=|<=|>|<)\d+$/.test(p)) {
+    const [,op,numStr] = p.match(/^(>=|<=|>|<)(\d+)$/);
+    const n = numStr ? parseInt(numStr,10) : null; if (n==null) return { ok:false, errors };
+    if (op==='>=') { minLen = n; }
+    else if (op==='<=') { maxLen = n; }
+    else if (op==='>') { minLen = n + 1; }
+    else if (op==='<') { maxLen = Math.max(0, n - 1); }
+    return finish();
+  }
+  // n+ shorthand for >= n
+  if (/^\d+\+$/.test(p)) {
+    const n = num(p.slice(0,-1)); if (n==null) return { ok:false, errors };
+    minLen = n; return finish();
+  }
+
+  errors.push(vErr('unrecognized','Unrecognized length pattern',{ pattern: p }));
+  return { ok:false, errors };
+}
+
+function validateLengthPattern(pattern) { return parseLengthPattern(pattern); }
+
 // Namespace export (browser/global)
 const WordSearch = {
   init: ensureInit,
@@ -594,6 +672,8 @@ const WordSearch = {
   validateRegex,
   validateAnagrams,
   validateSubanagrams,
+  parseLengthPattern,
+  validateLengthPattern,
   searchSubanagrams,
   // sub-anagram search is now a standalone global (see below)
   getWords,
@@ -611,6 +691,8 @@ if (typeof window !== 'undefined') {
   window.wordSearchValidateRegex = validateRegex;
   window.wordSearchValidateAnagrams = validateAnagrams;
   window.wordSearchValidateSubanagrams = validateSubanagrams;
+  window.wordSearchParseLengthPattern = parseLengthPattern;
+  window.wordSearchValidateLengthPattern = validateLengthPattern;
   window.wordSearchSubanagrams = searchSubanagrams;
   window.wordSearchGetWords = getWords;
   window.parseSimplifiedRegex = parseSimplifiedRegex;
@@ -623,6 +705,8 @@ if (typeof window !== 'undefined') {
   globalThis.wordSearchValidateRegex = validateRegex;
   globalThis.wordSearchValidateAnagrams = validateAnagrams;
   globalThis.wordSearchValidateSubanagrams = validateSubanagrams;
+  globalThis.wordSearchParseLengthPattern = parseLengthPattern;
+  globalThis.wordSearchValidateLengthPattern = validateLengthPattern;
   globalThis.wordSearchSubanagrams = searchSubanagrams;
   globalThis.wordSearchGetWords = getWords;
   globalThis.parseSimplifiedRegex = parseSimplifiedRegex;
