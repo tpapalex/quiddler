@@ -436,7 +436,9 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
 //      candidates requiring each digraph substring to appear at least the specified count (non-overlapping per digraph).
 //   4. If token text inside parentheses is not a known digraph, it is treated as plain letters.
 // Edge cases: unmatched '(' ignored; empty pattern returns [].
-function searchAnagrams(pattern) {
+// searchAnagrams(pattern, { minLen=0, maxLen=Infinity })
+// Applies length filter against the exact expanded letter count of the pattern (letters + digraph token letters).
+function searchAnagrams(pattern, { minLen = 0, maxLen = Infinity } = {}) {
   ensureInit();
   if (pattern == null) return [];
   const input = String(pattern).trim();
@@ -470,6 +472,8 @@ function searchAnagrams(pattern) {
   }
 
   if (!letters.length) return [];
+  const literalLen = letters.length;
+  if (literalLen < minLen || literalLen > maxLen) return [];
   const sig = letters.sort().join('');
   const candidates = ANAGRAM_INDEX.get(sig);
   if (!candidates) return [];
