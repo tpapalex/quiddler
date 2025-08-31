@@ -663,6 +663,228 @@ function parseLengthPattern(pattern) {
 
 function validateLengthPattern(pattern) { return parseLengthPattern(pattern); }
 
+// ------------------ Multi-search (intersection) ------------------
+// specs: array of { type: 'regex'|'anagram'|'subanagram'|'length', pattern: string, options? }
+// options: { returnWords=false, debug=false }
+// Returns { ok:true, indices:[...], words?[], plan:[...], minLen, maxLen } or { ok:false, errors:[...] }
+
+// Caches
+const __regexParseCache = new Map();    // pattern -> parsed regex object
+const __anagramCache    = new Map();    // pattern -> indices array
+const __subanaCache     = new Map();    // pattern -> indices array (default minLen=0,max=Inf, allowSingleDigraph true)
+const __lengthCache     = new Map();    // pattern -> { ok, minLen, maxLen }
+
+function intersectSorted(a, b) {
+  if (!a || !a.length) return [];
+  if (!b || !b.length) return [];
+  const out = []; let i=0,j=0;
+  while (i < a.length && j < b.length) {
+    const x=a[i], y=b[j];
+    if (x===y) { out.push(x); i++; j++; }
+    else if (x<y) i++; else j++;
+  }
+  return out;
+}
+
+function uniqueSorted(arr) {
+  if (!arr.length) return arr;
+  const out=[]; let prev=arr[0]-1;
+  for (const v of arr) { if (v!==prev) out.push(v); prev=v; }
+  return out;
+}
+
+function estimateRegexSelectivity(parsed) {
+  if (!parsed || parsed.error) return 0.5; // unknown
+  switch (parsed.type) {
+    case 'literal': return 0.0001;
+    case 'mask': return 0.01;
+    case 'prefixSuffix': return parsed.unbounded ? 0.1 : 0.05;
+    case 'prefix':
+    case 'suffix': return 0.1;
+    case 'contains': return 0.3;
+    case 'any': return 1.0;
+    default: return 0.6; // generic
+  }
+}
+
+function signatureForAnagramPattern(pattern) {
+  // pattern already validated: collect letters & digraph letters
+  const tokenRe=/\([a-zA-Z]+\)|[a-zA-Z]/g; const letters=[]; let m;
+  while ((m=tokenRe.exec(pattern))!==null) {
+    const tok=m[0];
+    if (tok[0]==='(') {
+      for (const c of tok.slice(1,-1).toLowerCase()) letters.push(c);
+    } else letters.push(tok.toLowerCase());
+  }
+  return letters.sort().join('');
+}
+
+function rackMaxLengthSubanagram(pattern) {
+  // sum letters of tokens (digraph counts letters). Use parseCards + normalizeToken
+  const tokens = parseCards(pattern).map(normalizeToken);
+  let total=0; for (const t of tokens) total += t.length; return total;
+}
+
+function searchMulti(specs, { returnWords=false, debug=false } = {}) {
+  ensureInit();
+  if (!Array.isArray(specs)) return { ok:false, errors:[vErr('invalid-args','Specs must be an array')] };
+  if (!specs.length) return { ok:true, indices:[], words: returnWords?[]:undefined, plan:[], minLen:0, maxLen:Infinity };
+
+  const errors=[]; const norm=[]; // normalized specs
+  let globalMin=0, globalMax=Infinity;
+  const anagramSignatures=new Set();
+  const literalRegexWords=new Set();
+  // First pass: validate & derive inherent length bounds
+  for (const s of specs) {
+    if (!s || typeof s!=='object') { errors.push(vErr('bad-spec','Spec must be object', { spec:s })); continue; }
+    const { type, pattern } = s;
+    if (!['regex','anagram','subanagram','length'].includes(type)) { errors.push(vErr('bad-type','Unknown search type',{ type })); continue; }
+    if (pattern == null) { errors.push(vErr('null-pattern','Pattern null',{ type })); continue; }
+    let valRes;
+    if (type==='regex') valRes = validateRegex(pattern);
+    else if (type==='anagram') valRes = validateAnagrams(pattern);
+    else if (type==='subanagram') valRes = validateSubanagrams(pattern);
+    else if (type==='length') {
+      valRes = validateLengthPattern(pattern);
+    }
+    if (!valRes.ok) { errors.push(...valRes.errors.map(e=>({...e, type }))); continue; }
+
+    let inherentMin=0, inherentMax=Infinity, meta={};
+    if (type==='length') {
+      inherentMin = valRes.minLen; inherentMax = valRes.maxLen;
+    } else if (type==='regex') {
+      // parse / cache
+      let parsed = __regexParseCache.get(valRes.normalized);
+      if (!parsed) { parsed = parseSimplifiedRegex(valRes.normalized); __regexParseCache.set(valRes.normalized, parsed); }
+      if (parsed.error) { errors.push(vErr('parse-fail','Regex parse failed',{ pattern: valRes.normalized })); continue; }
+      inherentMin = parsed.minLen; inherentMax = parsed.maxLen;
+      meta.parsed = parsed;
+      if (parsed.type==='literal') literalRegexWords.add(parsed.data.word);
+    } else if (type==='anagram') {
+      const sig = signatureForAnagramPattern(valRes.normalized);
+      meta.signature = sig;
+      const len = sig.length; inherentMin = len; inherentMax = len;
+      anagramSignatures.add(sig);
+    } else if (type==='subanagram') {
+      const rackMax = rackMaxLengthSubanagram(valRes.normalized);
+      inherentMin = 0; inherentMax = rackMax; // we don't assume min; could add option
+    }
+
+    // apply to global bounds
+    if (inherentMin > globalMin) globalMin = inherentMin;
+    if (inherentMax < globalMax) globalMax = inherentMax;
+    norm.push({ type, pattern: String(pattern), normalized: valRes.normalized, inherentMin, inherentMax, meta, options: s.options || {} });
+  }
+  if (errors.length) return { ok:false, errors };
+  if (globalMin > globalMax) return { ok:true, indices:[], plan:[{ reason:'length-contradiction', globalMin, globalMax }], minLen:globalMin, maxLen:globalMax };
+
+  // Early contradictions
+  if (anagramSignatures.size > 1) return { ok:true, indices:[], plan:[{ reason:'anagram-signature-mismatch' }], minLen:globalMin, maxLen:globalMax };
+  if (literalRegexWords.size > 1) return { ok:true, indices:[], plan:[{ reason:'literal-mismatch' }], minLen:globalMin, maxLen:globalMax };
+  // If both literal regex word and anagram signature present, ensure match
+  if (literalRegexWords.size===1 && anagramSignatures.size===1) {
+    const lit=[...literalRegexWords][0]; const sig=[...anagramSignatures][0];
+    if (lit.split('').sort().join('') !== sig) return { ok:true, indices:[], plan:[{ reason:'literal-vs-anagram-mismatch' }], minLen:globalMin, maxLen:globalMax };
+  }
+
+  // Derive execution list (exclude pure length specs)
+  const executables = norm.filter(s=> s.type !== 'length');
+  if (!executables.length) {
+    // Only length constraints; return all word indices within bounds
+    const out=[]; for (let L=globalMin; L<=globalMax && L<WORDS_BY_LENGTH.length; L++) { const b=WORDS_BY_LENGTH[L]; if (b) out.push(...b); }
+    const indices = uniqueSorted(out);
+    const words = returnWords ? getWords(indices) : undefined;
+    return { ok:true, indices, words, plan:[{ type:'length-only', globalMin, globalMax, produced: indices.length, after: indices.length }], minLen:globalMin, maxLen:globalMax };
+  }
+
+  function rank(s) {
+    if (s.type==='anagram') return 1;
+    if (s.type==='regex') {
+      const t = s.meta.parsed.type;
+      if (t==='literal') return 0;
+      if (t==='mask') return 2;
+      if (t==='prefixSuffix' && !s.meta.parsed.unbounded) return 2;
+      if (t==='prefix'||t==='suffix') return 3;
+      if (t==='contains') return 4;
+      if (t==='any') return 7; // low selectivity
+      return 5; // generic
+    }
+    if (s.type==='subanagram') {
+      const rackLen = s.inherentMax; // letters available
+      return rackLen <= 7 ? 2 : (rackLen <= 10 ? 4 : 6);
+    }
+    return 8;
+  }
+
+  executables.sort((a,b)=> rank(a)-rank(b));
+
+  let current = null;
+  const plan=[];
+
+  for (const spec of executables) {
+    let produced=[];
+    const t=spec.type;
+    const minLen = globalMin, maxLen = globalMax;
+    if (t==='regex') {
+      // literal: direct lookup + length check
+      if (spec.meta.parsed.type==='literal') {
+        const w=spec.meta.parsed.data.word; const idx = WORD_TO_INDEX.get(w);
+        produced = (idx!=null && w.length>=minLen && w.length<=maxLen) ? [idx] : [];
+      } else if (current) {
+        // Filter existing candidates instead of full search
+        const parsed=spec.meta.parsed;
+        const kind=parsed.type;
+        const out=[];
+        const regexObj = (kind==='generic') ? parsed.data.regex : null;
+        for (const idx of current) {
+          const w = WORD_LIST[idx];
+          if (w.length < minLen || w.length > maxLen) continue;
+          let ok=false;
+          switch(kind) {
+            case 'any': ok = (w.length>=parsed.minLen && w.length<=parsed.maxLen); break;
+            case 'prefix': ok = w.startsWith(parsed.data.prefix); break;
+            case 'suffix': ok = w.endsWith(parsed.data.suffix); break;
+            case 'contains': ok = w.includes(parsed.data.substring); break;
+            case 'prefixSuffix': {
+              const { prefix, suffix, gapMin, unboundedGap } = parsed.data;
+              if (w.startsWith(prefix) && w.endsWith(suffix)) {
+                const gapLen = w.length - prefix.length - suffix.length;
+                ok = gapLen >= gapMin && (unboundedGap || gapLen===gapMin);
+              }
+              break;
+            }
+            case 'mask': {
+              const { runs } = parsed.data; ok=true; for (const r of runs) { if (w.substr(r.pos, r.value.length)!==r.value) { ok=false; break; } }
+              break; }
+            case 'generic': ok = regexObj.test(w); break;
+          }
+          if (ok) out.push(idx);
+        }
+        produced = out;
+      } else {
+        produced = searchRegex(spec.normalized, { minLen, maxLen });
+      }
+    } else if (t==='anagram') {
+      let cached = __anagramCache.get(spec.normalized);
+      if (!cached) { cached = searchAnagrams(spec.normalized, { minLen, maxLen }); __anagramCache.set(spec.normalized, cached); }
+      produced = cached;
+    } else if (t==='subanagram') {
+      let cached = __subanaCache.get(spec.normalized);
+      if (!cached) { cached = searchSubanagrams(spec.normalized, { minLen, maxLen }); __subanaCache.set(spec.normalized, cached); }
+      produced = cached;
+    }
+    produced = uniqueSorted(produced);
+    const after = current ? intersectSorted(current, produced) : produced;
+    plan.push({ type:t, pattern: spec.pattern, normalized: spec.normalized, produced: produced.length, before: current ? current.length : null, after: after.length, rank: rank(spec) });
+    current = after;
+    if (!current.length) break;
+  }
+
+  const indices = current || [];
+  const words = returnWords ? getWords(indices) : undefined;
+  return { ok:true, indices, words, plan, minLen:globalMin, maxLen:globalMax };
+}
+
 // Namespace export (browser/global)
 const WordSearch = {
   init: ensureInit,
@@ -675,6 +897,7 @@ const WordSearch = {
   parseLengthPattern,
   validateLengthPattern,
   searchSubanagrams,
+  searchMulti,
   // sub-anagram search is now a standalone global (see below)
   getWords,
   // (internal/raw) - expose cautiously for debugging / future optimizations
@@ -694,6 +917,7 @@ if (typeof window !== 'undefined') {
   window.wordSearchParseLengthPattern = parseLengthPattern;
   window.wordSearchValidateLengthPattern = validateLengthPattern;
   window.wordSearchSubanagrams = searchSubanagrams;
+  window.wordSearchMulti = searchMulti;
   window.wordSearchGetWords = getWords;
   window.parseSimplifiedRegex = parseSimplifiedRegex;
 } else {
@@ -708,6 +932,7 @@ if (typeof window !== 'undefined') {
   globalThis.wordSearchParseLengthPattern = parseLengthPattern;
   globalThis.wordSearchValidateLengthPattern = validateLengthPattern;
   globalThis.wordSearchSubanagrams = searchSubanagrams;
+  globalThis.wordSearchMulti = searchMulti;
   globalThis.wordSearchGetWords = getWords;
   globalThis.parseSimplifiedRegex = parseSimplifiedRegex;
 }
