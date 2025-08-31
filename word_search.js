@@ -495,12 +495,40 @@ function searchAnagrams(pattern) {
   return out;
 }
 
+// ------------------ Sub-anagram (rack subset) search ------------------
+// Returns all dictionary words formable from given rack pattern (letters + parenthesized digraph tokens)
+// Options: { minLen=2, maxLen=Infinity }
+function searchSubanagrams(rackPattern, { minLen = 0, maxLen = Infinity, allowSingleDigraph = true } = {}) {
+  ensureInit();
+  if (rackPattern == null) return [];
+  const text = String(rackPattern).trim(); if (!text) return [];
+  const tokens = parseCards(text).map(normalizeToken);
+  if (!tokens.length) return [];
+  const rackCounts = countRack(tokens, DIGRAPHS);
+  const trie = getValidWordTrie();
+  const cands = generateWordCandidates(trie, rackCounts, { minLen, maxLen, allowSingleDigraph});
+  const out = [];
+  for (const c of cands) {
+    if (c.length < minLen || c.length > maxLen) continue;
+    const pw = plainWord(c.word).toLowerCase();
+    const idx = WORD_TO_INDEX.get(pw);
+    if (idx != null) out.push(idx);
+  }
+  out.sort((a,b)=>a-b);
+  // dedupe
+  const dedup = []; let prev = -1;
+  for (const i of out) { if (i !== prev) dedup.push(i); prev = i; }
+  return dedup;
+}
+
 // Namespace export (browser/global)
 const WordSearch = {
   init: ensureInit,
   stats,
   searchRegex,
   searchAnagrams,
+  searchSubanagrams,
+  // sub-anagram search is now a standalone global (see below)
   getWords,
   // (internal/raw) - expose cautiously for debugging / future optimizations
   _internal: () => ({ WORD_LIST, WORD_TO_INDEX, WORDS_BY_LENGTH, ANAGRAM_INDEX })
@@ -513,6 +541,7 @@ if (typeof window !== 'undefined') {
   window.wordSearchStats = stats;
   window.wordSearchRegex = searchRegex;
   window.wordSearchAnagrams = searchAnagrams;
+  window.wordSearchSubanagrams = searchSubanagrams;
   window.wordSearchGetWords = getWords;
   window.parseSimplifiedRegex = parseSimplifiedRegex;
 } else {
@@ -521,6 +550,7 @@ if (typeof window !== 'undefined') {
   globalThis.wordSearchStats = stats;
   globalThis.wordSearchRegex = searchRegex;
   globalThis.wordSearchAnagrams = searchAnagrams;
+  globalThis.wordSearchSubanagrams = searchSubanagrams;
   globalThis.wordSearchGetWords = getWords;
   globalThis.parseSimplifiedRegex = parseSimplifiedRegex;
 }

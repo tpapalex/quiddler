@@ -433,5 +433,6 @@ if (typeof window !== 'undefined') {
   // Namespace exports used by tools_drawer and debug consoles.
   window.QuiddlerSolver = Object.assign({}, window.QuiddlerSolver || {}, {
     optimize,
+    countRack, // expose for word_search sub-anagram reuse
   });
 }
