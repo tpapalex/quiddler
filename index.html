@@ -28,6 +28,23 @@
       .tippy-box[data-theme~='plain'] { background:#555; color:#fff; font-size:12px; line-height:1.2; padding:2px 4px; border-radius:2px; border:1px solid #777; box-shadow:none; }
       .tippy-box[data-theme~='plain'] .tippy-content { padding:0; }
       .tippy-box[data-theme~='plain'] .tippy-arrow { display:none !important; }
+      /* Mobile collapsible FAB behavior */
+      @media (max-width: 639.5px) {
+        #fabButtons[data-collapsed='true'] > button { /* hidden state */
+          pointer-events: none;
+        }
+        #fabButtons[data-collapsed='true'] > button { opacity:0; transform:translateY(0.5rem) scale(.85); }
+        #fabButtons > button { transition: opacity .22s ease, transform .24s cubic-bezier(.4,.2,.2,1); }
+        /* Stagger animation using nth-child */
+        #fabButtons[data-collapsed='false'] > button { pointer-events:auto; }
+        #fabButtons[data-collapsed='false'] > button { opacity:1; transform:translateY(0) scale(1); }
+        #fabButtons > button:nth-child(1) { transition-delay:0ms; }
+        #fabButtons > button:nth-child(2) { transition-delay:30ms; }
+        #fabButtons > button:nth-child(3) { transition-delay:60ms; }
+        #fabButtons[data-collapsed='true'] > button:nth-child(1) { transition-delay:60ms; }
+        #fabButtons[data-collapsed='true'] > button:nth-child(2) { transition-delay:30ms; }
+        #fabButtons[data-collapsed='true'] > button:nth-child(3) { transition-delay:0ms; }
+      }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
@@ -116,31 +133,42 @@
         </div>
     </div>
 
-    <!-- Tools Drawer Toggle Button -->
-    <div class="fixed bottom-6 right-6 flex flex-col gap-3 z-50">
-      <button id="dictToolBtn"
-              class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg"
-              aria-label="Dictionary (⌘/Ctrl+I)"
-              data-tippy-content="Dictionary (⌘/Ctrl+I)"
-              type="button">
-        <img src="book-open.svg" class="w-7 h-7 invert" alt="" />
-      </button>
+    <!-- Floating Action Buttons (desktop: always visible vertical stack; mobile: collapsible) -->
+    <div id="fabWrap" class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+      <!-- Actual action buttons group -->
+      <div id="fabButtons" class="flex flex-col gap-3 sm:flex" data-collapsed="true">
+        <button id="dictToolBtn"
+                class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
+                aria-label="Dictionary (⌘/Ctrl+I)"
+                data-tippy-content="Dictionary (⌘/Ctrl+I)"
+                type="button">
+          <img src="book-open.svg" class="w-7 h-7 invert" alt="" />
+        </button>
 
-      <button id="optToolBtn"
-              class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg"
-              aria-label="Solver (⌘/Ctrl+O)"
-              data-tippy-content="Solver (⌘/Ctrl+O)"
-              type="button">
-        <img src="cog-6-tooth.svg" class="w-7 h-7 invert" alt="" />
-      </button>
+        <button id="optToolBtn"
+                class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
+                aria-label="Solver (⌘/Ctrl+O)"
+                data-tippy-content="Solver (⌘/Ctrl+O)"
+                type="button">
+          <img src="cog-6-tooth.svg" class="w-7 h-7 invert" alt="" />
+        </button>
 
-      <!-- New Game floating action button -->
-      <button id="newGameBtn"
-              class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg"
-              aria-label="New Game (⌘/Ctrl+Enter)"
-              data-tippy-content="New Game (⌘/Ctrl+Enter)"
-              type="button">
-        <img src="arrow-path.svg" class="w-7 h-7 invert" alt="" />
+        <!-- New Game floating action button -->
+        <button id="newGameBtn"
+                class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
+                aria-label="New Game (⌘/Ctrl+Enter)"
+                data-tippy-content="New Game (⌘/Ctrl+Enter)"
+                type="button">
+          <img src="arrow-path.svg" class="w-7 h-7 invert" alt="" />
+        </button>
+      </div>
+      <!-- Mobile toggle button (hidden >= sm) -->
+      <button id="fabToggle" aria-label="Actions" aria-expanded="false"
+              class="sm:hidden w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+        <!-- Upward arrow icon -->
+        <svg id="fabToggleIcon" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 5.25a.75.75 0 0 1 .53.22l7 7a.75.75 0 1 1-1.06 1.06L12 7.81l-6.47 5.72a.75.75 0 1 1-1-1.12l7-6.2a.75.75 0 0 1 .47-.16Z"/>
+        </svg>
       </button>
     </div>
 
@@ -402,6 +430,41 @@
       focusPlayersIfPreGame();
       setTimeout(focusPlayersIfPreGame, 0);
       requestAnimationFrame(focusPlayersIfPreGame);
+
+      // Mobile FAB collapse / expand
+      (function(){
+        const wrap = document.getElementById('fabWrap');
+        const grp = document.getElementById('fabButtons');
+        const toggle = document.getElementById('fabToggle');
+        if(!wrap || !grp || !toggle) return;
+        // Start collapsed on mobile only
+        function isMobile(){ return window.matchMedia('(max-width: 639.5px)').matches; }
+        function setCollapsed(val){
+          grp.setAttribute('data-collapsed', val ? 'true' : 'false');
+          toggle.setAttribute('aria-expanded', (!val).toString());
+          // Rotate icon 180 when expanded
+          const icon = document.getElementById('fabToggleIcon');
+          if(icon){ icon.style.transition='transform .25s ease'; icon.style.transform = val ? 'rotate(0deg)' : 'rotate(180deg)'; }
+        }
+        setCollapsed(true);
+        toggle.addEventListener('click', () => {
+          if(!isMobile()) return; // desktop has all visible; ignore
+          const c = grp.getAttribute('data-collapsed') === 'true';
+          setCollapsed(!c);
+        });
+        // Close on outside tap or ESC
+        document.addEventListener('pointerdown', (e) => {
+          if(!isMobile()) return;
+          const c = grp.getAttribute('data-collapsed') === 'true';
+            if(c) return; // already closed
+          if(!wrap.contains(e.target)) setCollapsed(true);
+        });
+        document.addEventListener('keydown', (e) => {
+          if(!isMobile()) return; if(e.key === 'Escape') setCollapsed(true);
+        });
+        // If resizing to desktop, ensure expanded state so regular tooltips still work
+        window.addEventListener('resize', () => { if(!isMobile()) { setCollapsed(false); } else { setCollapsed(true); } });
+      })();
     </script>
 </body>
 </html>
