@@ -1044,41 +1044,5 @@ const WordSearch = {
   validateLengthPattern,
   searchSubanagrams,
   searchMulti,
-  // sub-anagram search is now a standalone global (see below)
   getWords,
-  // (internal/raw) - expose cautiously for debugging / future optimizations
-  _internal: () => ({ WORD_LIST, WORD_TO_INDEX, WORDS_BY_LENGTH, ANAGRAM_INDEX })
 };
-
-if (typeof window !== 'undefined') {
-  window.WordSearch = window.WordSearch || WordSearch;
-  // Expose individual globals
-  window.wordSearchInit = ensureInit;
-  window.wordSearchStats = stats;
-  window.wordSearchRegex = searchRegex;
-  window.wordSearchAnagrams = searchAnagrams;
-  window.wordSearchValidateRegex = validateRegex;
-  window.wordSearchValidateAnagrams = validateAnagrams;
-  window.wordSearchValidateSubanagrams = validateSubanagrams;
-  window.wordSearchParseLengthPattern = parseLengthPattern;
-  window.wordSearchValidateLengthPattern = validateLengthPattern;
-  window.wordSearchSubanagrams = searchSubanagrams;
-  window.wordSearchMulti = searchMulti;
-  window.wordSearchGetWords = getWords;
-  window.parseSimplifiedRegex = parseSimplifiedRegex;
-} else {
-  globalThis.WordSearch = globalThis.WordSearch || WordSearch;
-  globalThis.wordSearchInit = ensureInit;
-  globalThis.wordSearchStats = stats;
-  globalThis.wordSearchRegex = searchRegex;
-  globalThis.wordSearchAnagrams = searchAnagrams;
-  globalThis.wordSearchValidateRegex = validateRegex;
-  globalThis.wordSearchValidateAnagrams = validateAnagrams;
-  globalThis.wordSearchValidateSubanagrams = validateSubanagrams;
-  globalThis.wordSearchParseLengthPattern = parseLengthPattern;
-  globalThis.wordSearchValidateLengthPattern = validateLengthPattern;
-  globalThis.wordSearchSubanagrams = searchSubanagrams;
-  globalThis.wordSearchMulti = searchMulti;
-  globalThis.wordSearchGetWords = getWords;
-  globalThis.parseSimplifiedRegex = parseSimplifiedRegex;
-}
