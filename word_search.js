@@ -106,7 +106,11 @@ function parseSimplifiedRegex(pattern) {
   if (pattern == null) return { error: 'null-pattern' };
   const raw = String(pattern).trim();
   if (!raw) return { error: 'empty-pattern' };
-  let cleaned = raw.replace(/\s+/g,'').replace(/[^a-zA-Z.*+]/g,'');
+  // Allow digraph parentheses: remove them if they wrap a known digraph so letters remain contiguous.
+  let tmp = raw.replace(/\s+/g,'');
+  // Strip valid digraph parentheses (always available)
+  tmp = tmp.replace(/\(([a-zA-Z]+)\)/g, (m, inner) => DIGRAPHS.has(inner.toLowerCase()) ? inner : '');
+  let cleaned = tmp.replace(/[^a-zA-Z.*+]/g,'');
   if (!cleaned) return { error: 'empty-after-clean' };
   cleaned = cleaned
     .replace(/\*+/g,'*')
@@ -425,72 +429,47 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
   }
 }
 
-// ------------------ Anagram Search (with optional digraph tokens) ------------------
-// Supports input like:
-//   "past(er)"  -> letters p a s t e r with required digraph substring "er"
-//   "e(th)(er)" -> letters e t h e r with required digraphs "th" and "er"
-// Behavior:
-//   1. Expand all tokens into their letters (digraph tokens contribute their letters)
-//   2. Lookup candidate anagrams via letter multiset signature
-//   3. If digraph tokens were specified AND a global DIGRAPHS set exists and contains them, filter
-//      candidates requiring each digraph substring to appear at least the specified count (non-overlapping per digraph).
-//   4. If token text inside parentheses is not a known digraph, it is treated as plain letters.
-// Edge cases: unmatched '(' ignored; empty pattern returns [].
-// searchAnagrams(pattern, { minLen=0, maxLen=Infinity })
-// Applies length filter against the exact expanded letter count of the pattern (letters + digraph token letters).
+// ------------------ Anagram Search (assumes prior validation) ------------------
+// Pattern (already validated) may contain parenthesized digraph tokens like (th)(er) along with plain letters.
+// Length of an anagram is fixed = total letters (digraph letters included individually).
 function searchAnagrams(pattern, { minLen = 0, maxLen = Infinity } = {}) {
   ensureInit();
   if (pattern == null) return [];
-  const input = String(pattern).trim();
-  if (!input) return [];
+  const input = String(pattern).trim(); if (!input) return [];
 
-  const digraphsAvailable = (typeof DIGRAPHS !== 'undefined' && DIGRAPHS && typeof DIGRAPHS.has === 'function');
   const digraphCounts = Object.create(null);
   const letters = [];
-  let sawDigraphToken = false;
-
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === '(') {
-      const j = input.indexOf(')', i+1);
-      if (j === -1) continue; // skip unmatched
-      const token = input.slice(i+1, j).toLowerCase();
-      i = j; // advance
-      if (token) {
-        if (digraphsAvailable && DIGRAPHS.has(token)) {
-          digraphCounts[token] = (digraphCounts[token] || 0) + 1;
-          sawDigraphToken = true;
-          for (const c of token) letters.push(c);
-        } else {
-          // treat chars individually
-            for (const c of token) if (/[a-z]/.test(c)) letters.push(c);
-        }
-      }
-    } else if (/[a-z]/i.test(ch)) {
-      letters.push(ch.toLowerCase());
+  const tokenRe = /\([a-zA-Z]+\)|[a-zA-Z]/g;
+  let m;
+  while ((m = tokenRe.exec(input)) !== null) {
+    const tok = m[0];
+    if (tok[0] === '(') {
+      const inner = tok.slice(1, -1).toLowerCase(); // guaranteed valid digraph by validator
+      digraphCounts[inner] = (digraphCounts[inner] || 0) + 1;
+      for (const c of inner) letters.push(c);
+    } else {
+      letters.push(tok.toLowerCase());
     }
   }
-
   if (!letters.length) return [];
   const literalLen = letters.length;
   if (literalLen < minLen || literalLen > maxLen) return [];
+
   const sig = letters.sort().join('');
   const candidates = ANAGRAM_INDEX.get(sig);
   if (!candidates) return [];
 
-  const needFilter = sawDigraphToken && digraphsAvailable && Object.keys(digraphCounts).length;
-  if (!needFilter) return candidates.slice();
+  if (!Object.keys(digraphCounts).length) return candidates.slice();
 
   const out = [];
   candidateLoop: for (const idx of candidates) {
     const w = WORD_LIST[idx];
     for (const [dg, need] of Object.entries(digraphCounts)) {
-      let found = 0; let pos = 0;
+      let found = 0, pos = 0;
       while (found < need) {
         const p = w.indexOf(dg, pos);
         if (p === -1) { found = -1; break; }
-        found++;
-        pos = p + dg.length; // non-overlapping occurrences for same digraph
+        found++; pos = p + dg.length; // non-overlapping
       }
       if (found < need) continue candidateLoop;
     }
@@ -525,12 +504,96 @@ function searchSubanagrams(rackPattern, { minLen = 0, maxLen = Infinity, allowSi
   return dedup;
 }
 
+// ------------------ Validation Helpers ------------------
+// Return shape: { ok:true, normalized, type } OR { ok:false, errors:[ {code,message,details?} ... ] }
+function vErr(code, message, details) { return { code, message, details }; }
+
+// Shared scanner for parentheses-wrapped digraph tokens.
+// Options:
+//   strip: remove parentheses for valid digraph tokens in returned stripped string (default true)
+//   requireValid: if true, any parenthesized token not in digraph set yields error
+//   allowParens: if false, any parentheses produce error
+//   allowNested: if false, a '(' encountered while already open produces error
+function _scanDigraphParens(input, { strip = true, requireValid = true, allowParens = true, allowNested = false } = {}) {
+  const digraphSet = DIGRAPHS; // assume defined
+  const errors = [];
+  let out = '';
+  let i = 0; let open = false; let start = -1;
+  while (i < input.length) {
+    const ch = input[i];
+    if (ch === '(') {
+      if (!allowParens) { errors.push(vErr('parentheses-not-allowed','Parentheses not allowed',{ index:i })); i++; continue; }
+      if (open && !allowNested) errors.push(vErr('nested-parentheses','Nested parentheses not allowed',{ index:i }));
+      open = true; start = i; i++; continue;
+    }
+    if (ch === ')') {
+      if (!open) { errors.push(vErr('unmatched-close','Unmatched closing parenthesis',{ index:i })); i++; continue; }
+      const token = input.slice(start+1, i);
+      if (!/^[a-zA-Z]+$/.test(token)) {
+        errors.push(vErr('invalid-digraph-chars','Non-letter characters inside parentheses',{ token }));
+  } else if (requireValid && !digraphSet.has(token.toLowerCase())) {
+        errors.push(vErr('invalid-digraph','Parenthesized token is not a valid digraph',{ token }));
+      }
+  if (strip && (!requireValid || digraphSet.has(token.toLowerCase()))) {
+        out += token; // keep letters only
+      } else {
+        out += '(' + token + ')';
+      }
+      open = false; start = -1; i++; continue;
+    }
+    // regular char
+    if (!open) out += ch; // inside open we'll append after closing to avoid mixing
+    i++;
+  }
+  if (open) errors.push(vErr('unmatched-open','Unmatched opening parenthesis',{ index:start }));
+  return { errors, stripped: out };
+}
+
+// Regex validation (simplified dialect: letters, ., *, + only). Parentheses invalid here.
+function validateRegex(pattern) {
+  if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] };
+  const raw = String(pattern); const input = raw.trim();
+  if (!input) return { ok:false, errors:[vErr('empty-pattern','Pattern is empty')] };
+  const invalid = new Set();
+  // First scan parentheses/digraphs (if digraph set exists). We allow parentheses only for valid digraphs.
+  const parenScan = _scanDigraphParens(input, { strip:true, requireValid:true, allowParens:true, allowNested:false });
+  for (const ch of parenScan.stripped) {
+    if (/[a-z]/i.test(ch) || ch==='.' || ch==='*' || ch==='+' ) continue;
+    if (!/\s/.test(ch)) invalid.add(ch);
+  }
+  const errors = [...parenScan.errors];
+  if (invalid.size) errors.push(vErr('invalid-chars','Invalid characters present',{ chars:[...invalid] }));
+  if (errors.length) return { ok:false, errors };
+  return { ok:true, normalized: parenScan.stripped, type:'regex' };
+}
+
+// Shared for anagram / subanagram inputs
+function validateAnagramLike(pattern, type) {
+  if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] };
+  const raw = String(pattern); const input = raw.trim();
+  if (!input) return { ok:false, errors:[vErr('empty-pattern','Pattern is empty')] };
+  const invalid = new Set();
+  const scan = _scanDigraphParens(input, { strip:false, requireValid:true, allowParens:true, allowNested:false });
+  for (const ch of input.replace(/\([^)]+\)/g,'')) { // remove paren groups for char validation
+    if (!/[a-z]/i.test(ch) && !/\s/.test(ch)) invalid.add(ch);
+  }
+  const errors = [...scan.errors];
+  if (invalid.size) errors.push(vErr('invalid-chars','Invalid characters present',{ chars:[...invalid] }));
+  if (errors.length) return { ok:false, errors };
+  return { ok:true, normalized: input, type };
+}
+function validateAnagrams(p) { return validateAnagramLike(p,'anagrams'); }
+function validateSubanagrams(p) { return validateAnagramLike(p,'subanagrams'); }
+
 // Namespace export (browser/global)
 const WordSearch = {
   init: ensureInit,
   stats,
   searchRegex,
   searchAnagrams,
+  validateRegex,
+  validateAnagrams,
+  validateSubanagrams,
   searchSubanagrams,
   // sub-anagram search is now a standalone global (see below)
   getWords,
@@ -545,6 +608,9 @@ if (typeof window !== 'undefined') {
   window.wordSearchStats = stats;
   window.wordSearchRegex = searchRegex;
   window.wordSearchAnagrams = searchAnagrams;
+  window.wordSearchValidateRegex = validateRegex;
+  window.wordSearchValidateAnagrams = validateAnagrams;
+  window.wordSearchValidateSubanagrams = validateSubanagrams;
   window.wordSearchSubanagrams = searchSubanagrams;
   window.wordSearchGetWords = getWords;
   window.parseSimplifiedRegex = parseSimplifiedRegex;
@@ -554,6 +620,9 @@ if (typeof window !== 'undefined') {
   globalThis.wordSearchStats = stats;
   globalThis.wordSearchRegex = searchRegex;
   globalThis.wordSearchAnagrams = searchAnagrams;
+  globalThis.wordSearchValidateRegex = validateRegex;
+  globalThis.wordSearchValidateAnagrams = validateAnagrams;
+  globalThis.wordSearchValidateSubanagrams = validateSubanagrams;
   globalThis.wordSearchSubanagrams = searchSubanagrams;
   globalThis.wordSearchGetWords = getWords;
   globalThis.parseSimplifiedRegex = parseSimplifiedRegex;
