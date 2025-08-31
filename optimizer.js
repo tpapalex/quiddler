@@ -1,6 +1,6 @@
 // Quiddler best-play solver
 // Pipeline overview:
-// 1) buildTrie: builds a prefix trie from validWordsMap (depth limited by maxRound)
+// 1) buildTrie: builds a prefix trie from validWordsMap (now always full depth once, lazily)
 // 2) countRack: splits tiles into single letters vs. digraph tile counts
 // 3) makeCommonGateFromEntries: makes a frequency-based filter from common_lemmas.js entries
 // 4) generateWordCandidates: DFS over trie using available rack counts to produce scored candidates
@@ -12,19 +12,16 @@
 // 6) optimize: orchestrates, wires to UI params, and returns a summary for rendering
 
 // ---------- Build trie ----------
-function buildTrie(words, maxDepth = 10) {
-  // Insert each word up to maxDepth; mark node.end for words whose full length <= maxDepth.
-  // This lets DFS stop early while still recognizing completes within the search horizon.
+function buildTrie(words) {
+  // Full-depth trie: every character of every word inserted; node.end marks complete words.
   const root = { children: Object.create(null), end: false };
   for (const wRaw of words) {
     const w = wRaw.toLowerCase();
-    let node = root, depth = 0;
+    let node = root;
     for (const ch of w) {
-      if (depth >= maxDepth) break;
       node = node.children[ch] ??= { children: Object.create(null), end: false };
-      depth++;
     }
-    if (w.length <= maxDepth) node.end = true;
+    node.end = true;
   }
   return root;
 }
@@ -32,11 +29,10 @@ function buildTrie(words, maxDepth = 10) {
 // Global, lazily-initialized trie built from validWordsMap
 let validWordTrie = (typeof window !== 'undefined' && window.validWordTrie) ? window.validWordTrie : null;
 function getValidWordTrie() {
-  // Create once, reuse across optimize() calls. Depth tied to maxRound so longer paths are pruned.
+  // Build once at full depth (no depth limiting); reuse thereafter.
   if (!validWordTrie) {
     const words = (typeof validWordsMap !== 'undefined') ? Object.keys(validWordsMap) : [];
-    const depth = (typeof maxRound === 'number') ? maxRound : 10;
-    validWordTrie = buildTrie(words, depth);
+    validWordTrie = buildTrie(words);
     if (typeof window !== 'undefined') window.validWordTrie = validWordTrie;
   }
   return validWordTrie;
@@ -93,12 +89,22 @@ function makeCommonGateFromEntries(
 }
 
 // ---------- Generate candidates (keep all distinct usages) ----------
-function generateWordCandidates(trie, rackCounts, minLen = 2, opts = {}) {
+function generateWordCandidates(trie, rackCounts, opts = {}) {
+  // Options:
+  // - minLen (default 2): minimum plain word length to accept
+  // - maxLen (default Infinity): maximum plain word length to explore (prunes branching beyond)
+  // - allowSingleDigraph (default false): if true, allow words composed of exactly one digraph tile (e.g., "qu")
+  // - commonGate: optional predicate(word) -> boolean to filter by frequency/commonness
   // DFS walks trie using available counts. Each path maintains:
   // - path: letters for trie traversal
   // - usedTokens: actual tiles used (singles or digraphs) to compute score/usage
   // De-duplication is per plain word by usage signature so (qu)a vs. q(u)a remain distinct if tiles differ.
-  const { commonGate = null } = opts;
+  const {
+    commonGate = null,
+    minLen = 2,
+    maxLen = Infinity,
+    allowSingleDigraph = false,
+  } = opts;
 
   const out = [];
   const path = [];
@@ -125,8 +131,8 @@ function generateWordCandidates(trie, rackCounts, minLen = 2, opts = {}) {
   function pushResult() {
     const plainWord = path.join('');
 
-    // Skip words that are a single digraph tile (e.g., "qu", "th")
-    if (usedTokens.length === 1 && usedTokens[0].length > 1) return;
+    // Skip words that are a single digraph tile unless explicitly allowed
+    if (!allowSingleDigraph && usedTokens.length === 1 && usedTokens[0].length > 1) return;
 
     if (commonGate && !commonGate(plainWord)) return;
 
@@ -145,9 +151,10 @@ function generateWordCandidates(trie, rackCounts, minLen = 2, opts = {}) {
 
   function dfs(node, singleCounts, digraphCounts) {
     if (node.end && path.length >= minLen) pushResult();
+    if (path.length >= maxLen) return; // stop expanding further
 
     for (const [L, c] of Object.entries(singleCounts)) {
-      if (c > 0 && node.children[L]) {
+      if (c > 0 && node.children[L] && path.length + 1 <= maxLen) {
         singleCounts[L]--; path.push(L); usedTokens.push(L);
         dfs(node.children[L], singleCounts, digraphCounts);
         usedTokens.pop(); path.pop(); singleCounts[L]++;
@@ -157,7 +164,7 @@ function generateWordCandidates(trie, rackCounts, minLen = 2, opts = {}) {
       if (c > 0) {
         const a = DG[0], b = DG[1];
         const n1 = node.children[a], n2 = n1 && n1.children[b];
-        if (n2) {
+        if (n2 && path.length + 2 <= maxLen) {
           digraphCounts[DG]--; path.push(a,b); usedTokens.push(DG);
           dfs(n2, singleCounts, digraphCounts);
           usedTokens.pop(); path.pop(); path.pop(); digraphCounts[DG]++;
@@ -380,7 +387,7 @@ async function optimize(params) {
 
   // Use the global, lazily-initialized trie instead of rebuilding each time
   const trie = getValidWordTrie();
-  const candidates = generateWordCandidates(trie, rackCounts, 2, { commonGate });
+  const candidates = generateWordCandidates(trie, rackCounts, { commonGate, minLen: 2 });
 
   let bestplay = chooseBestPlay(candidates, rackCounts, {
     noDiscard,
