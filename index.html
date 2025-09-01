@@ -38,13 +38,18 @@
         /* Stagger animation using nth-child */
         #fabButtons[data-collapsed='false'] > button { pointer-events:auto; }
         #fabButtons[data-collapsed='false'] > button { opacity:1; transform:translateY(0) scale(1); }
-        #fabButtons > button:nth-child(1) { transition-delay:0ms; }
-        #fabButtons > button:nth-child(2) { transition-delay:30ms; }
-        #fabButtons > button:nth-child(3) { transition-delay:60ms; }
-        #fabButtons[data-collapsed='true'] > button:nth-child(1) { transition-delay:60ms; }
-        #fabButtons[data-collapsed='true'] > button:nth-child(2) { transition-delay:30ms; }
-        #fabButtons[data-collapsed='true'] > button:nth-child(3) { transition-delay:0ms; }
+  #fabButtons > button:nth-child(1) { transition-delay:0ms; }
+  #fabButtons > button:nth-child(2) { transition-delay:30ms; }
+  #fabButtons > button:nth-child(3) { transition-delay:60ms; }
+  #fabButtons > button:nth-child(4) { transition-delay:90ms; }
+  #fabButtons[data-collapsed='true'] > button:nth-child(1) { transition-delay:90ms; }
+  #fabButtons[data-collapsed='true'] > button:nth-child(2) { transition-delay:60ms; }
+  #fabButtons[data-collapsed='true'] > button:nth-child(3) { transition-delay:30ms; }
+  #fabButtons[data-collapsed='true'] > button:nth-child(4) { transition-delay:0ms; }
       }
+  /* Word Search subtle error styling */
+  .ws-error { border-color:#fda4af !important; background:#fff1f2; box-shadow:0 0 0 1px #fda4af inset; }
+  .ws-error:focus { box-shadow:0 0 0 2px #fda4af66; }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
@@ -153,6 +158,14 @@
           <img src="cog-6-tooth.svg" class="w-7 h-7 invert" alt="" />
         </button>
 
+  <button id="searchToolBtn"
+    class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
+    aria-label="Search (⌘/Ctrl+K)"
+    data-tippy-content="Search (⌘/Ctrl+K)"
+    type="button">
+    <img src="magnifying-glass.svg" class="w-7 h-7 invert" alt="" />
+  </button>
+
         <!-- New Game floating action button -->
         <button id="newGameBtn"
                 class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
@@ -191,6 +204,7 @@
         <div class="inline-flex text-sm rounded-lg overflow-hidden border border-gray-200">
           <button id="toolsTabDict" class="px-3 py-2 bg-white text-gray-900">Dictionary</button>
           <button id="toolsTabPlay" class="px-3 py-2 bg-gray-100 text-gray-600">Solver</button>
+          <button id="toolsTabSearch" class="px-3 py-2 bg-gray-100 text-gray-600">Search</button>
         </div>
       </div>
 
@@ -299,6 +313,12 @@
           <div id="playResult" class="mt-2 hidden"></div>
 
         </section>
+        <!-- Word Search panel -->
+        <section id="toolsPanelSearch" class="hidden">
+          <div class="text-sm text-gray-500 mb-3">Add rows with +. Remove with ×. Last row cannot be removed (input is cleared instead).</div>
+          <div id="searchRows" class="mb-2"></div>
+          <!-- Placeholder area for future Run/results -->
+        </section>
       </div>
     </aside>
 
@@ -315,6 +335,7 @@
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + .</span> Skip current round</li>
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + I</span> Open dictionary</li>
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + O</span> Open solver</li>
+          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + K</span> Open search</li>
           <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + /</span> Toggle this panel</li>
         </ul>
         <!-- Bottom cache clear section with concise labels -->
@@ -465,6 +486,149 @@
         });
         // If resizing to desktop, ensure expanded state so regular tooltips still work
         window.addEventListener('resize', () => { if(!isMobile()) { setCollapsed(false); } else { setCollapsed(true); } });
+      })();
+
+      // Word Search dynamic rows (+ / ×) MVP with dynamic placeholders
+      (function(){
+        const container = document.getElementById('searchRows');
+        if(!container) return;
+        const hasTippy = () => !!window.tippy;
+        function attachTooltip(el, content){
+          if(!hasTippy()) return;
+          if(el._tippy){ el._tippy.setContent(content); return; }
+          window.tippy(el, { content, animation:'scale', placement:'bottom', theme:'plain', trigger:'mouseenter focus', hideOnClick:true, delay:[120,80] });
+        }
+        function clearTooltip(el){ if(el._tippy){ el._tippy.destroy(); } }
+        function placeholderFor(type){
+          switch(type){
+            case 'regex': return '.=any, *=0 or more, +=1 or more';
+            case 'anagram': return 'e.g., past(er)';
+            case 'subanagram': return 'e.g. past(er)';
+            case 'length': return 'e.g. 5, 1-4, 2-, -3';
+            default: return 'Enter pattern…';
+          }
+        }
+        function validateValue(type, value){
+          if(!value) return { ok:true };
+          let res = { ok:true };
+          try {
+            if(type==='regex') res = window.WordSearch?.validateRegex?.(value) || res;
+            else if(type==='anagram') res = window.WordSearch?.validateAnagrams?.(value) || res;
+            else if(type==='subanagram') res = window.WordSearch?.validateSubanagrams?.(value) || res;
+            else if(type==='length') res = window.WordSearch?.validateLengthPattern?.(value) || res;
+          } catch(_){ }
+          if(res && res.ok === false) return res;
+          // Some validators return {ok:false, errors}; we already handled. If they return {ok:true} but errors present, treat as ok.
+          return res;
+        }
+        function applyValidation(row){
+          const inp = row.querySelector('.ws-input');
+          const sel = row.querySelector('.ws-type');
+          if(!inp||!sel) return;
+            const val = inp.value.trim();
+            const res = validateValue(sel.value, val);
+            const focused = document.activeElement === inp;
+            if(res.ok){
+              inp.classList.remove('ws-error');
+              clearTooltip(inp);
+            } else {
+              // Always show error styling; tooltip now on hover only
+              inp.classList.add('ws-error');
+              const msg = (res.errors||[]).map(e=> e.message || e.code).join('\n') || 'Invalid';
+              attachTooltip(inp, msg);
+            }
+        }
+        function revalidateAll(){ Array.from(container.children).forEach(applyValidation); }
+        function updateAddButtons(){
+          const rows = Array.from(container.children);
+          rows.forEach((r,i)=>{
+            const add = r.querySelector('.ws-add');
+            if(add) add.classList.toggle('invisible', i !== rows.length - 1);
+          });
+        }
+        function createRow(){
+          const wrap = document.createElement('div');
+          wrap.className='flex items-center gap-2 mb-2';
+          wrap.innerHTML = `
+            <button type="button" class="ws-add w-7 h-7 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center text-sm font-semibold" title="Add row" aria-label="Add row">+</button>
+            <button type="button" class="ws-remove w-7 h-7 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center text-sm font-semibold" title="Remove row" aria-label="Remove row">×</button>
+            <input type="text" class="ws-input flex-1 border rounded-lg px-2 py-1 text-sm outline-none focus:ring focus:ring-blue-200" placeholder="" />
+            <select class="ws-type border rounded-lg px-2 py-1 text-sm">
+              <option value="regex">Pattern</option>
+              <option value="anagram">Anagram</option>
+              <option value="subanagram">Subanagram</option>
+              <option value="length">Length</option>
+            </select>
+          `;
+          container.appendChild(wrap);
+          const sel = wrap.querySelector('.ws-type');
+          const inp = wrap.querySelector('.ws-input');
+          if(sel && inp) inp.placeholder = placeholderFor(sel.value);
+          inp.addEventListener('blur', () => applyValidation(wrap));
+          inp.addEventListener('input', () => applyValidation(wrap));
+          sel.addEventListener('change', () => { applyValidation(wrap); });
+          updateAddButtons();
+          return wrap;
+        }
+        function ensureAtLeastOne(){ if(container.children.length===0) { createRow(); } updateAddButtons(); }
+        function handleAdd(btn){ const row = createRow(); const inp=row.querySelector('.ws-input'); inp?.focus(); }
+        function handleRemove(btn){
+          const row = btn.closest('div');
+          if(!row) return;
+          if(container.children.length===1){
+            const inp = row.querySelector('.ws-input'); if(inp) inp.value='';
+            inp?.focus();
+            return;
+          }
+          row.remove();
+          updateAddButtons();
+          const last = container.lastElementChild; last?.querySelector('.ws-input')?.focus();
+        }
+        container.addEventListener('click', (e)=>{
+          const target = e.target;
+          if(!(target instanceof HTMLElement)) return;
+          if(target.classList.contains('ws-add')) { handleAdd(target); }
+          else if(target.classList.contains('ws-remove')) { handleRemove(target); }
+        });
+        container.addEventListener('change', (e)=>{
+          const target = e.target;
+          if(!(target instanceof HTMLElement)) return;
+          if(target.classList.contains('ws-type')) {
+            const row = target.closest('div');
+            const inp = row?.querySelector('.ws-input');
+            if(inp) {
+              inp.placeholder = placeholderFor(target.value);
+              inp.focus();
+              try { inp.select(); } catch(_){ }
+            }
+          }
+        });
+        // Character filtering per type (lightweight; deeper validation deferred to backend validators)
+        container.addEventListener('input', (e)=>{
+          const el = e.target;
+          if(!(el instanceof HTMLInputElement) || !el.classList.contains('ws-input')) return;
+          const row = el.closest('div');
+          const typeSel = row?.querySelector('.ws-type');
+          const t = typeSel?.value || 'regex';
+          const allowed = t==='regex' ? /[a-zA-Z.*+()]/g
+                        : (t==='anagram' || t==='subanagram') ? /[a-zA-Z()]/g
+                        : t==='length' ? /[0-9+\-<=]/g
+                        : /[\s\S]/g; // fallback allow all
+          const caret = el.selectionStart ?? el.value.length;
+          const before = el.value.slice(0, caret);
+          const filteredFull = (el.value.match(allowed) || []).join('');
+          const filteredBefore = (before.match(allowed) || []).join('');
+          if (filteredFull !== el.value) {
+            el.value = filteredFull;
+            const newPos = filteredBefore.length;
+            try { el.setSelectionRange(newPos, newPos); } catch(_){ }
+          }
+          // Revalidate after filtering
+          if(row) applyValidation(row);
+        });
+        ensureAtLeastOne();
+        // Periodic revalidation in case external state changes (lightweight)
+        setInterval(()=>{ revalidateAll(); }, 4000);
       })();
   </script>
 

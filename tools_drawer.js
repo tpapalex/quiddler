@@ -63,6 +63,14 @@ function initToolsDrawer(){
     showTab('play');
     setTimeout(() => document.getElementById('tilesInput')?.focus(), 0);
   });
+  document.getElementById('searchToolBtn')?.addEventListener('click', () => {
+    window.QuiddlerHideShortcuts?.();
+    openDrawer();
+    showTab('search');
+    setTimeout(() => document.getElementById('searchInput')?.focus(), 0);
+    // Lazy init indices
+    try { window.WordSearch?.init?.(); } catch(_){ }
+  });
   closeBtn.addEventListener('click', closeDrawer);
   backdrop.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (e) => {
@@ -92,43 +100,61 @@ function initToolsDrawer(){
       openDrawer();
       showTab('play');
       setTimeout(() => document.getElementById('tilesInput')?.focus(), 0);
+    } else if (k === 'k') { // Search
+      window.QuiddlerHideShortcuts?.();
+      e.preventDefault();
+      openDrawer();
+      showTab('search');
+      setTimeout(() => document.getElementById('searchInput')?.focus(), 0);
+      try { window.WordSearch?.init?.(); } catch(_){ }
     }
   });
 
   // Tabs
   const tabDict = document.getElementById('toolsTabDict');
   const tabPlay = document.getElementById('toolsTabPlay');
+  const tabSearch = document.getElementById('toolsTabSearch');
   const panelDict = document.getElementById('toolsPanelDict');
   const panelPlay = document.getElementById('toolsPanelPlay');
+  const panelSearch = document.getElementById('toolsPanelSearch');
+
+  function activateTab(tabEl, active) {
+    if (!tabEl) return;
+    tabEl.classList.toggle('bg-white', active);
+    tabEl.classList.toggle('text-gray-900', active);
+    tabEl.classList.toggle('bg-gray-100', !active);
+    tabEl.classList.toggle('text-gray-600', !active);
+  }
 
   function showTab(which) {
     const isDict = which === 'dict';
-    panelDict.classList.toggle('hidden', !isDict);
-    panelPlay.classList.toggle('hidden', isDict);
-    tabDict.classList.toggle('bg-white', isDict);
-    tabDict.classList.toggle('text-gray-900', isDict);
-    tabDict.classList.toggle('bg-gray-100', !isDict);
-    tabDict.classList.toggle('text-gray-600', !isDict);
-    tabPlay.classList.toggle('bg-white', !isDict);
-    tabPlay.classList.toggle('text-gray-900', !isDict);
-    tabPlay.classList.toggle('bg-gray-100', isDict);
-    tabPlay.classList.toggle('text-gray-600', isDict);
+    const isPlay = which === 'play';
+    const isSearch = which === 'search';
+    if (panelDict) panelDict.classList.toggle('hidden', !isDict);
+    if (panelPlay) panelPlay.classList.toggle('hidden', !isPlay);
+    if (panelSearch) panelSearch.classList.toggle('hidden', !isSearch);
+    activateTab(tabDict, isDict);
+    activateTab(tabPlay, isPlay);
+    activateTab(tabSearch, isSearch);
 
-    // Focus appropriate input after switching tabs, but only if drawer is open
     setTimeout(() => {
       const isOpen = !drawer.classList.contains('translate-x-full');
       if (!isOpen) return;
       if (isDict) document.getElementById('dictInput')?.focus();
-      else document.getElementById('tilesInput')?.focus();
+      else if (isPlay) document.getElementById('tilesInput')?.focus();
+      else if (isSearch) document.getElementById('searchInput')?.focus();
     }, 0);
 
-    // AFTER switching, if showing Play tab ensure API filter default reflects current game dictionary source.
     if (which === 'play') {
       applyApiFilterDefault();
     }
+    if (which === 'search') {
+      try { window.WordSearch?.init?.(); } catch(_){ }
+    }
   }
-  tabDict.addEventListener('click', () => showTab('dict'));
-  tabPlay.addEventListener('click', () => showTab('play'));
+  tabDict?.addEventListener('click', () => showTab('dict'));
+  tabPlay?.addEventListener('click', () => showTab('play'));
+  tabSearch?.addEventListener('click', () => showTab('search'));
   showTab('dict');
 
   // ===== Dictionary (async, render <br>) =====
@@ -367,6 +393,12 @@ function initToolsDrawer(){
       showTab('play');
       setTimeout(() => document.getElementById('tilesInput')?.focus(), 0);
     },
+    showSearch: () => {
+      openDrawer();
+      showTab('search');
+      setTimeout(() => document.getElementById('searchInput')?.focus(), 0);
+      try { window.WordSearch?.init?.(); } catch(_){ }
+    },
     prefillPlay: ({ tiles, currentLongest, currentMost }) => {
       // Pre-populate Play Helper with a row's tiles and current opponent thresholds.
       openDrawer(); showTab('play');
@@ -403,6 +435,7 @@ function initToolsDrawer(){
   if (window.tippy) {
     tippy('#dictToolBtn', { placement: 'left', animation: 'scale' });
     tippy('#optToolBtn',  { placement: 'left', animation: 'scale' });
+  tippy('#searchToolBtn', { placement: 'left', animation: 'scale' });
     tippy('#newGameBtn',  { placement: 'left', animation: 'scale' }); // NEW
   }
 }

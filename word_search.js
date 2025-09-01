@@ -1093,3 +1093,6 @@ const WordSearch = {
   searchMulti,
   getWords,
 };
+
+// Ensure global access for UI scripts using window.WordSearch (const does not auto-attach)
+try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } catch(_){ }
