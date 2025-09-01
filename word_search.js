@@ -1159,6 +1159,17 @@ const WordSearch = {
   searchSubanagrams,
   searchMulti,
   getWords,
+  // Helper: given a raw Contains pattern (now may include wildcards) produce a regex-compatible pattern.
+  // Rules: empty => '*'; otherwise wrap with leading & trailing '*' unless already supplied.
+  transformContainsPattern(raw) {
+    if (raw == null) return '*';
+    let p = String(raw).trim();
+    if (!p) return '*';
+    // Do not double-wrap if user already started/ended with '*'
+    if (!p.startsWith('*')) p = '*' + p;
+    if (!p.endsWith('*')) p = p + '*';
+    return p;
+  },
 };
 
 // Ensure global access for UI scripts using window.WordSearch (const does not auto-attach)
@@ -1174,8 +1185,9 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
     ? DIGRAPHS
     : (window.QuiddlerData && window.QuiddlerData.DIGRAPHS) ? window.QuiddlerData.DIGRAPHS : new Set();
   const ALLOWED = {
-    regex: /[a-zA-Z.*+()]/g,
-    contains: /[a-zA-Z]/g,
+  regex: /[a-zA-Z.*+()]/g,
+  // Contains now supports same wildcard meta set as regex (letters, ., *, +, parentheses for digraph convenience)
+  contains: /[a-zA-Z.*+()]/g,
     anagram: /[a-zA-Z()]/g,
     subanagram: /[a-zA-Z()]/g,
     length: /[0-9+\-<=]/g,
@@ -1194,7 +1206,33 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
     return { tokens, nested, unmatchedOpen, unmatchedClose };
   }
   // --- Per-type validators (extracted for clarity) ---
-  function validateContains(val){ return /^[a-zA-Z]+$/.test(val) ? { status:'ok' } : { status:'error', message:'Only letters A-Z' }; }
+  // Contains validator now mirrors regex (wildcards) but applies relaxed rules:
+  //  - Allows empty (treated as no filter) and meta-only (e.g. '*') which map to 'any'.
+  //  - Parentheses for digraphs validated like anagram/regex; valid digraph parens are stripped upstream.
+  function validateContains(val){
+    const trimmed = (val==null?'':String(val)).trim();
+    if (!trimmed) return { status:'ok' }; // empty accepted => no filter
+    // Reuse regex-style validator with meta allowed
+    const scan=collectParenTokens(trimmed);
+    if(scan.unmatchedOpen || scan.unmatchedClose) return { status:'error', message:'Unmatched parentheses' };
+    if(scan.nested) return { status:'error', message:'Nested parentheses' };
+    const invalidDigraphPattern=[]; const badDigraph=[]; const invalidChars=new Set();
+    for(const inner of scan.tokens){
+      if(!/^[a-zA-Z]+$/.test(inner)){ invalidDigraphPattern.push('('+inner.toLowerCase()+')'); continue; }
+      if(inner.length!==2){ invalidDigraphPattern.push('('+inner.toLowerCase()+')'); continue; }
+      if(!DIG.has(inner.toLowerCase())) badDigraph.push('('+inner.toLowerCase()+')');
+    }
+    if(invalidDigraphPattern.length) return { status:'error', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
+    if(badDigraph.length) return { status:'error', message:'Non-existent digraphs: '+badDigraph.join(', ') };
+    const stripped=trimmed.replace(/\([^)]+\)/g,'');
+    for(const ch of stripped){
+      if(/[a-zA-Z.*+]/.test(ch)) continue;
+      if(/[()\s]/.test(ch)) continue;
+      invalidChars.add(ch);
+    }
+    if(invalidChars.size) return { status:'error', message:'Invalid characters: '+[...invalidChars].join(', ') };
+    return { status:'ok' };
+  }
   function validateLength(val){
     const p=val.replace(/\s+/g,'');
     const errors=[]; const num=n=> /^\d+$/.test(n)? parseInt(n,10):(errors.push('Invalid number: '+n), null);

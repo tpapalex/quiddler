@@ -537,7 +537,7 @@
         function placeholderFor(type){
           switch(type){
             case 'regex': return '.=any, *=0 or more, +=1 or more';
-            case 'contains': return 'letters anywhere';
+            case 'contains': return '.=any, *=0 or more, +=1 or more';
             case 'anagram': return 'e.g., past(er)';
             case 'subanagram': return 'e.g. past(er)';
             case 'length': return 'e.g. 5, 1-4, 2-, -3';
@@ -797,8 +797,10 @@
               }
             } catch(_){ /* ignore */ }
             let specs = collectSpecs();
-            // Transform 'contains' specs into regex fast-path equivalents *value*
-            specs = specs.map(s => s.type==='contains' ? ({ type:'regex', pattern:`*${s.pattern}*` }) : s);
+            // Transform 'contains' specs into regex fast-path equivalents using helper (wrap with * on both ends)
+            specs = specs.map(s => s.type==='contains'
+              ? ({ type:'regex', pattern:(window.WordSearch?.transformContainsPattern ? window.WordSearch.transformContainsPattern(s.pattern) : `*${s.pattern}*`) })
+              : s);
             if(!specs.length){
               // All blank -> broad search using fast any pattern '+' (one or more letters)
               specs = [{ type:'regex', pattern:'+' }];
