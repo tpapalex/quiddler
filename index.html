@@ -342,8 +342,18 @@
 
         </section>
         <!-- Word Search panel -->
-  <section id="toolsPanelSearch" class="hidden flex flex-col flex-1 min-h-0">
-          <div class="text-sm text-gray-500 mb-3">Use . to match exactly one letter (but not digraph), * to match 0 or more letters, and + to match 1 or more letters.</div>
+        <section id="toolsPanelSearch" class="hidden flex flex-col flex-1 min-h-0">
+          <div class="flex items-center flex-wrap gap-3 mb-4">
+            <div class="text-sm text-gray-500">
+              Tip: Use <span id="wsMetaSet" class="cursor-help border-b border-dotted border-gray-400">. ? * +</span> wildcards
+            </div>
+            <span class="text-sm text-gray-500 flex items-center gap-1 select-none">
+              (<label class="inline-flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" id="wsDigraphUnits" class="rounded w-3 h-3 accent-gray-500 focus:ring-0 focus:outline-none" checked>
+                <span class="text-sm text-gray-500">digraphs as tiles</span>
+              </label>)
+            </span>
+          </div>
           <div id="searchRows" class="mb-2"></div>
           <!-- Inline sort control appears in results -->
           <div class="mt-2 flex items-center gap-3 justify-end">
@@ -528,7 +538,38 @@
       (function(){
         const container = document.getElementById('searchRows');
         if(!container) return;
-        let searchSortMode = 'alpha+';
+        // Init wildcard meta tooltip (plain style) if tippy available
+        try {
+          const metaSpan = document.getElementById('wsMetaSet');
+          if (metaSpan && window.tippy) {
+            const content = '. = 1 tile\n? = 0-1 tiles\n* = 0+ tiles\n+ = 1+ tiles';
+            window.tippy(metaSpan, { content, placement:'right', animation:'none', delay:[250,0], theme:'plain', arrow:false, offset:[4,4] });
+          }
+        } catch(_){ }
+        // Wire digraph units checkbox
+        (function(){
+          const STORAGE_KEY = 'wsDigraphUnits';
+          const cb = document.getElementById('wsDigraphUnits');
+          if(!cb) return;
+          try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (stored === '0' || stored === '1') {
+              cb.checked = stored === '1';
+            }
+          } catch(_){ }
+          const apply = () => {
+            try { window.WordSearch?.setRegexOptions({ digraphUnits: cb.checked }); } catch(_){}
+            try { localStorage.setItem(STORAGE_KEY, cb.checked ? '1':'0'); } catch(_){ }
+          };
+          cb.addEventListener('change', apply);
+          apply();
+        })();
+        const SEARCH_SORT_MODE_KEY = 'wsSearchSortMode';
+        let searchSortMode = (function(){
+          let v = null;
+          try { v = localStorage.getItem(SEARCH_SORT_MODE_KEY); } catch(_){ }
+          return ['alpha+','alpha-','len+','len-'].includes(v) ? v : 'alpha+';
+        })();
 
         // --- Minimal implementation (Phase 1 migration: remove bespoke validation) ---
         // All prior per-field soft/hard validation & character filtering removed intentionally.
@@ -688,6 +729,7 @@
           const sortEl = resultEl.querySelector('#searchSortInline');
           sortEl?.addEventListener('change', ()=>{
             searchSortMode = sortEl.value;
+            try { localStorage.setItem(SEARCH_SORT_MODE_KEY, searchSortMode); } catch(_){ }
             if(_lastSearchWords.length){
               _lastSearchWords = sortWords(_lastSearchWords, searchSortMode);
               setResult(true,{ isWords:true });

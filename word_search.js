@@ -102,7 +102,25 @@ function stats() {
 //  contains: data { substring }
 //  prefixSuffix: data { prefix, suffix, gapMin, unboundedGap }
 //  generic: data { regex, segments }
-function parseSimplifiedRegex(pattern) {
+// Internal configurable options for simplified regex.
+// digraphUnits: if true, '.' / '*' / '+' operate on "units" where a unit is either a single letter OR any digraph in DIGRAPHS.
+// This introduces variable-width for '.' (1-2 letters currently; future-proof for longer digraphs by using max digraph length).
+let __regexOptions = { digraphUnits: true };
+function _setRegexOptions(opts){ if (opts && typeof opts === 'object') { __regexOptions = { ...__regexOptions, ...opts }; } }
+function _getRegexOptions(){ return { ...__regexOptions }; }
+
+function parseSimplifiedRegex(pattern, opts) {
+  const { digraphUnits } = { ...__regexOptions, ...(opts||{}) };
+  // Precompute digraph statistics if enabled.
+  let digraphList = [];
+  let maxDigraphLen = 2; // default assumption; updated if longer digraphs exist.
+  if (digraphUnits) {
+    // DIGRAPHS is guaranteed (per user constraint) to exist globally and be a Set.
+    digraphList = Array.from(DIGRAPHS).filter(d=>/^[a-z]+$/i.test(d));
+    // Sort longest-first for regex alternation stability.
+    digraphList.sort((a,b)=> b.length - a.length || a.localeCompare(b));
+    for (const d of digraphList) if (d.length > maxDigraphLen) maxDigraphLen = d.length;
+  }
   if (pattern == null) return { error: 'null-pattern' };
   const raw = String(pattern).trim();
   if (!raw) return { error: 'empty-pattern' };
@@ -110,7 +128,7 @@ function parseSimplifiedRegex(pattern) {
   let tmp = raw.replace(/\s+/g,'');
   // Strip valid digraph parentheses (always available)
   tmp = tmp.replace(/\(([a-zA-Z]+)\)/g, (m, inner) => DIGRAPHS.has(inner.toLowerCase()) ? inner : '');
-  let cleaned = tmp.replace(/[^a-zA-Z.*+]/g,'');
+  let cleaned = tmp.replace(/[^a-zA-Z.*+?]/g,'');
   if (!cleaned) return { error: 'empty-after-clean' };
   cleaned = cleaned
     .replace(/\*+/g,'*')
@@ -141,8 +159,9 @@ function parseSimplifiedRegex(pattern) {
     if (/[a-z]/i.test(ch)) { buf += ch; continue; }
     pushLit();
     if (ch === '.') segments.push({ type:'dot' });
-    else if (ch === '*') segments.push({ type:'star' });
-    else if (ch === '+') segments.push({ type:'plus' });
+  else if (ch === '*') segments.push({ type:'star' });
+  else if (ch === '+') segments.push({ type:'plus' });
+  else if (ch === '?') segments.push({ type:'opt' });
   }
   pushLit();
   if (!segments.length) return { error:'no-body' };
@@ -168,16 +187,28 @@ function parseSimplifiedRegex(pattern) {
   const lastSeg = segments[segments.length-1];
 
   // Helper scan for mandatory length
+  const dotMin = 1;
+  const dotMax = digraphUnits ? maxDigraphLen : 1; // variable width when digraph units enabled
   const minLenFromSegments = () => {
     let m = 0; for (const s of segments) {
       if (s.type === 'lit') m += s.value.length;
-      else if (s.type === 'dot') m += 1;
-      else if (s.type === 'plus') m += 1; // plus contributes at least one
+      else if (s.type === 'dot') m += dotMin;
+      else if (s.type === 'plus') m += 1; // plus contributes at least one unit
+      else if (s.type === 'opt') { /* 0 */ }
+      // star contributes 0
+    } return m;
+  };
+  const maxLenFromSegments = () => {
+    let m = 0; for (const s of segments) {
+      if (s.type === 'lit') m += s.value.length;
+      else if (s.type === 'dot') m += dotMax;
+      else if (s.type === 'opt') m += dotMax;
+      else if (s.type === 'plus' || s.type === 'star') return Infinity; // unbounded
     } return m;
   };
   const hasUnbounded = segments.some(s=> s.type==='star' || s.type==='plus');
   const minLenAll = minLenFromSegments();
-  const maxLenAll = hasUnbounded ? Infinity : minLenAll;
+  const maxLenAll = hasUnbounded ? Infinity : maxLenFromSegments();
 
   // Meta-only unbounded pattern (no literals, at least one star/plus) => treat as 'any'
   if (litCount === 0 && hasUnbounded) {
@@ -193,47 +224,74 @@ function parseSimplifiedRegex(pattern) {
     };
   }
 
-  // Fixed-length wildcard-only (all dots, no star/plus) -> treat as 'any' (bounded)
+  // Wildcard-only (all dots, no star/plus). If dot width fixed (no digraph units), treat as fixed-length any.
+  // If variable-width (digraph units), fall through to generic so length range is honored.
   if (litCount === 0 && !hasUnbounded && segments.every(s=> s.type==='dot')) {
-    return {
-      ok: true,
-      type: 'any',
-      source: raw,
-      normalized: cleaned,
-      minLen: minLenAll,
-      maxLen: minLenAll,
-      unbounded: false,
-      data: { length: minLenAll }
-    };
+    if (!(digraphUnits && dotMax > dotMin)) {
+      return {
+        ok: true,
+        type: 'any',
+        source: raw,
+        normalized: cleaned,
+        minLen: minLenAll,
+        maxLen: minLenAll,
+        unbounded: false,
+        data: { length: minLenAll }
+      };
+    }
+    // else variable width -> generic path below
   }
 
   // prefix fast type
   if (litCount === 1 && firstSeg.type==='lit') {
-    const mandatoryTail = segments.slice(1).reduce((a,s)=> a + (s.type==='dot'||s.type==='plus'?1:0), 0);
+    let tailMin=0, tailMax=0, tailUnbounded=false;
+    for (const s of segments.slice(1)) {
+      if (s.type==='dot') { tailMin += dotMin; tailMax += dotMax; }
+      else if (s.type==='plus') { tailMin += 1; tailUnbounded = true; }
+      else if (s.type==='star') { tailUnbounded = true; }
+      else if (s.type==='opt') { tailMax += dotMax; }
+    }
+    if (tailUnbounded) tailMax = Infinity;
+    // If variable-width bounded (tailMin != tailMax) under digraph units, skip prefix fast path (needs segmentation check) -> fall through to generic.
+    if (digraphUnits && dotMax>dotMin && !tailUnbounded && tailMin !== tailMax) {
+      // do nothing; allow generic fallback later
+    } else {
     return {
       ok: true,
       type: 'prefix',
       source: raw,
       normalized: cleaned,
-      minLen: firstSeg.value.length + mandatoryTail,
-      maxLen: hasUnbounded ? Infinity : firstSeg.value.length + mandatoryTail,
-      unbounded: hasUnbounded,
-      data: { prefix: firstSeg.value }
+      minLen: firstSeg.value.length + tailMin,
+      maxLen: (tailMax === Infinity) ? Infinity : firstSeg.value.length + tailMax,
+      unbounded: tailUnbounded,
+      data: { prefix: firstSeg.value, tailMin, tailMax }
     };
+    }
   }
   // suffix fast type
   if (litCount === 1 && lastSeg.type==='lit') {
-    const mandatoryHead = segments.slice(0,-1).reduce((a,s)=> a + (s.type==='dot'||s.type==='plus'?1:0), 0);
+    let headMin=0, headMax=0, headUnbounded=false;
+    for (const s of segments.slice(0,-1)) {
+      if (s.type==='dot') { headMin += dotMin; headMax += dotMax; }
+      else if (s.type==='plus') { headMin += 1; headUnbounded = true; }
+      else if (s.type==='star') { headUnbounded = true; }
+      else if (s.type==='opt') { headMax += dotMax; }
+    }
+    if (headUnbounded) headMax = Infinity;
+    if (digraphUnits && dotMax>dotMin && !headUnbounded && headMin !== headMax) {
+      // fall through to generic
+    } else {
     return {
       ok: true,
       type: 'suffix',
       source: raw,
       normalized: cleaned,
-      minLen: lastSeg.value.length + mandatoryHead,
-      maxLen: hasUnbounded ? Infinity : lastSeg.value.length + mandatoryHead,
-      unbounded: hasUnbounded,
-      data: { suffix: lastSeg.value }
+      minLen: lastSeg.value.length + headMin,
+      maxLen: (headMax === Infinity) ? Infinity : lastSeg.value.length + headMax,
+      unbounded: headUnbounded,
+      data: { suffix: lastSeg.value, headMin, headMax }
     };
+    }
   }
   // contains fast type (single literal + only stars around it)
   if (litCount === 1) {
@@ -255,24 +313,33 @@ function parseSimplifiedRegex(pattern) {
   // prefixSuffix: exactly two literals, metas between
   if (litCount === 2 && firstSeg.type==='lit' && lastSeg.type==='lit') {
     const middle = segments.slice(1,-1);
-    if (middle.length && middle.every(s=> s.type==='dot'||s.type==='star'||s.type==='plus')) {
-      const gapMin = middle.reduce((a,s)=> a + (s.type==='dot'||s.type==='plus'?1:0), 0);
-      const unboundedGap = middle.some(s=> s.type==='star' || s.type==='plus');
-      return {
-        ok: true,
-        type: 'prefixSuffix',
-        source: raw,
-        normalized: cleaned,
-        minLen: firstSeg.value.length + lastSeg.value.length + gapMin,
-        maxLen: unboundedGap ? Infinity : firstSeg.value.length + lastSeg.value.length + gapMin,
-        unbounded: unboundedGap,
-        data: { prefix: firstSeg.value, suffix: lastSeg.value, gapMin, unboundedGap }
-      };
+  if (middle.length && middle.every(s=> s.type==='dot'||s.type==='star'||s.type==='plus'||s.type==='opt')) {
+      let gapMin = 0, gapMax = 0, unboundedGap = false;
+      for (const s of middle) {
+        if (s.type==='dot') { gapMin += dotMin; gapMax += dotMax; }
+        else if (s.type==='plus') { gapMin += 1; unboundedGap = true; }
+        else if (s.type==='star') { unboundedGap = true; }
+    else if (s.type==='opt') { gapMax += dotMax; }
+      }
+      if (unboundedGap) gapMax = Infinity;
+      if (!(digraphUnits && dotMax>dotMin && !unboundedGap && gapMin !== gapMax)) {
+        return {
+          ok: true,
+          type: 'prefixSuffix',
+          source: raw,
+          normalized: cleaned,
+          minLen: firstSeg.value.length + lastSeg.value.length + gapMin,
+          maxLen: unboundedGap ? Infinity : firstSeg.value.length + lastSeg.value.length + gapMax,
+          unbounded: unboundedGap,
+          data: { prefix: firstSeg.value, suffix: lastSeg.value, gapMin, gapMax, unboundedGap }
+        };
+      }
     }
   }
 
   // mask: only literals and dots (at least one dot), no star/plus => fixed length positional mask
-  if (!hasUnbounded && litCount > 0 && segments.every(s=> s.type==='lit' || s.type==='dot') && segments.some(s=> s.type==='dot')) {
+  // mask optimization no longer safe if '.' can vary in width (digraphUnits). Only apply when dotMax==dotMin (i.e., digraphUnits disabled) and no unbounded metas.
+  if (!hasUnbounded && dotMin===dotMax && litCount > 0 && segments.every(s=> s.type==='lit' || s.type==='dot') && segments.some(s=> s.type==='dot')) {
     // Build runs of literals with starting positions
     let pos = 0;
     const runs = [];
@@ -297,11 +364,17 @@ function parseSimplifiedRegex(pattern) {
   }
 
   // Generic fallback
+  let unitPattern = '[a-z]';
+  if (digraphUnits && digraphList.length) {
+    const alternates = digraphList.map(d=> d.toLowerCase()).join('|');
+    unitPattern = '(?:' + alternates + '|[a-z])';
+  }
   const body = segments.map(s=>{
     if (s.type==='lit') return s.value;
-    if (s.type==='dot') return '[a-z]';
-    if (s.type==='star') return '[a-z]*';
-    if (s.type==='plus') return '[a-z]+';
+    if (s.type==='dot') return unitPattern;
+    if (s.type==='star') return '(?:' + unitPattern + ')*';
+    if (s.type==='plus') return '(?:' + unitPattern + ')+';
+    if (s.type==='opt') return '(?:' + unitPattern + ')?';
   }).join('');
   const regex = new RegExp('^' + body + '$','i');
   return {
@@ -316,10 +389,10 @@ function parseSimplifiedRegex(pattern) {
   };
 }
 
-function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
+function searchRegex(pattern, { minLen = 0, maxLen = Infinity, regexOptions } = {}) {
   ensureInit();
   if (pattern == null) return [];
-  const p = parseSimplifiedRegex(pattern);
+  const p = parseSimplifiedRegex(pattern, regexOptions);
   if (p.error || !p.ok) return [];
   if (maxLen < minLen) return [];
 
@@ -350,32 +423,22 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
   return out;
     }
     case 'prefix': {
-      const prefix = p.data.prefix;
-      for (let L = Math.max(effMin, prefix.length); L <= effMax && L < WORDS_BY_LENGTH.length; L++) {
-        if (!p.unbounded && L !== p.minLen) continue; // bounded exact length
-        if (L < p.minLen) continue;
+      const { prefix } = p.data;
+      for (let L = effMin; L <= effMax && L < WORDS_BY_LENGTH.length; L++) {
+        if (L < p.minLen || L > p.maxLen) continue;
         const bucket = WORDS_BY_LENGTH[L]; if (!bucket) continue;
-        for (const idx of bucket) {
-          const w = WORD_LIST[idx];
-          if (w.startsWith(prefix)) out.push(idx);
-        }
+        for (const idx of bucket) { const w = WORD_LIST[idx]; if (w.startsWith(prefix)) out.push(idx); }
       }
-  if (out.length > 1) out.sort((a,b)=>a-b);
-  return out;
+      if (out.length > 1) out.sort((a,b)=>a-b); return out;
     }
     case 'suffix': {
-      const suffix = p.data.suffix;
-      for (let L = Math.max(effMin, suffix.length); L <= effMax && L < WORDS_BY_LENGTH.length; L++) {
-        if (!p.unbounded && L !== p.minLen) continue;
-        if (L < p.minLen) continue;
+      const { suffix } = p.data;
+      for (let L = effMin; L <= effMax && L < WORDS_BY_LENGTH.length; L++) {
+        if (L < p.minLen || L > p.maxLen) continue;
         const bucket = WORDS_BY_LENGTH[L]; if (!bucket) continue;
-        for (const idx of bucket) {
-          const w = WORD_LIST[idx];
-          if (w.endsWith(suffix)) out.push(idx);
-        }
+        for (const idx of bucket) { const w = WORD_LIST[idx]; if (w.endsWith(suffix)) out.push(idx); }
       }
-  if (out.length > 1) out.sort((a,b)=>a-b);
-  return out;
+      if (out.length > 1) out.sort((a,b)=>a-b); return out;
     }
     case 'contains': {
       const sub = p.data.substring;
@@ -390,22 +453,20 @@ function searchRegex(pattern, { minLen = 0, maxLen = Infinity } = {}) {
   return out;
     }
     case 'prefixSuffix': {
-      const { prefix, suffix, gapMin, unboundedGap } = p.data;
+      const { prefix, suffix, gapMin, gapMax, unboundedGap } = p.data;
       const pLen = prefix.length, sLen = suffix.length;
-      for (let L = Math.max(effMin, pLen + sLen + gapMin); L <= effMax && L < WORDS_BY_LENGTH.length; L++) {
-        if (!unboundedGap && L !== pLen + sLen + gapMin) continue; // fixed interior size
+      for (let L = effMin; L <= effMax && L < WORDS_BY_LENGTH.length; L++) {
+        if (L < p.minLen || L > p.maxLen) continue;
         const gapLen = L - pLen - sLen;
         if (gapLen < gapMin) continue;
+        if (!unboundedGap && gapLen > gapMax) continue;
         const bucket = WORDS_BY_LENGTH[L]; if (!bucket) continue;
         for (const idx of bucket) {
           const w = WORD_LIST[idx];
-          if (!w.startsWith(prefix)) continue;
-            if (!w.endsWith(suffix)) continue;
-          out.push(idx);
+          if (w.startsWith(prefix) && w.endsWith(suffix)) out.push(idx);
         }
       }
-  if (out.length > 1) out.sort((a,b)=>a-b);
-  return out;
+      if (out.length > 1) out.sort((a,b)=>a-b); return out;
     }
     case 'mask': {
       const { length, runs } = p.data;
@@ -622,7 +683,7 @@ function buildMinimalValidation(kind, input){
   const stripped = input.replace(/\([^)]+\)/g,'');
   for (const ch of stripped) {
     if (/[a-zA-Z]/.test(ch)) continue;
-    if (kind==='regex') { if (ch==='.'||ch==='*'||ch==='+'||/\s/.test(ch)||ch==='('||ch===')') continue; }
+    if (kind==='regex') { if (ch==='.'||ch==='*'||ch==='+'||ch==='?'||/\s/.test(ch)||ch==='('||ch===')') continue; }
     else { if (/\s/.test(ch) || ch==='(' || ch===')') continue; }
     if (kind==='length') { if (/[0-9+\-<=]/.test(ch)) continue; }
     invalidChars.add(ch);
@@ -1150,6 +1211,8 @@ const WordSearch = {
   init: ensureInit,
   stats,
   searchRegex,
+  setRegexOptions: _setRegexOptions,
+  getRegexOptions: _getRegexOptions,
   searchAnagrams,
   validateRegex,
   validateAnagrams,
@@ -1185,9 +1248,9 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
     ? DIGRAPHS
     : (window.QuiddlerData && window.QuiddlerData.DIGRAPHS) ? window.QuiddlerData.DIGRAPHS : new Set();
   const ALLOWED = {
-  regex: /[a-zA-Z.*+()]/g,
-  // Contains now supports same wildcard meta set as regex (letters, ., *, +, parentheses for digraph convenience)
-  contains: /[a-zA-Z.*+()]/g,
+  regex: /[a-zA-Z.*+?()]/g,
+  // Contains now supports same wildcard meta set as regex (letters, ., *, +, ?, parentheses for digraph convenience)
+  contains: /[a-zA-Z.*+?()]/g,
     anagram: /[a-zA-Z()]/g,
     subanagram: /[a-zA-Z()]/g,
     length: /[0-9+\-<=]/g,
@@ -1226,7 +1289,7 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
   if(badDigraph.length) return { status:'warning', message:'Non-existent digraphs: '+badDigraph.join(', ') };
     const stripped=trimmed.replace(/\([^)]+\)/g,'');
     for(const ch of stripped){
-      if(/[a-zA-Z.*+]/.test(ch)) continue;
+  if(/[a-zA-Z.*+?]/.test(ch)) continue;
       if(/[()\s]/.test(ch)) continue;
       invalidChars.add(ch);
     }
@@ -1260,7 +1323,7 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
   if(badDigraph.length) return { status:'warning', message:'Non-existent digraphs: '+badDigraph.join(', ') };
     const stripped=val.replace(/\([^)]+\)/g,'');
     for(const ch of stripped){
-      if(allowMeta){ if(/[a-zA-Z.*+]/.test(ch)) continue; }
+  if(allowMeta){ if(/[a-zA-Z.*+?]/.test(ch)) continue; }
       else { if(/[a-zA-Z]/.test(ch)) continue; }
       if(/[()\s]/.test(ch)) continue;
       invalidChars.add(ch);
