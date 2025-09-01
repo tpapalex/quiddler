@@ -521,24 +521,40 @@
           // Some validators return {ok:false, errors}; we already handled. If they return {ok:true} but errors present, treat as ok.
           return res;
         }
-        function applyValidation(row){
-          const inp = row.querySelector('.ws-input');
-          const sel = row.querySelector('.ws-type');
-          if(!inp||!sel) return;
-            const val = inp.value.trim();
-            const res = validateValue(sel.value, val);
-            const focused = document.activeElement === inp;
-            if(res.ok){
-              inp.classList.remove('ws-error');
-              clearTooltip(inp);
-            } else {
-              // Always show error styling; tooltip now on hover only
-              inp.classList.add('ws-error');
-              const msg = (res.errors||[]).map(e=> e.message || e.code).join('\n') || 'Invalid';
-              attachTooltip(inp, msg);
-            }
+        // State machine validation: states = clean|valid|invalid|editing-invalid
+        function showError(inp,res){
+          inp.classList.add('ws-error');
+          const msg = (res.errors||[]).map(e=> e.message || e.code).join('\n') || 'Invalid';
+          attachTooltip(inp, msg);
+          inp.dataset.wsState='invalid';
+          // If user is actively focused & hovering, show updated tooltip immediately (no re-hover needed)
+          if(document.activeElement===inp && inp.dataset.wsHover==='1' && inp._tippy){
+            try { inp._tippy.show(); } catch(_){ }
+          }
         }
-        function revalidateAll(){ Array.from(container.children).forEach(applyValidation); }
+        function clearError(inp){ inp.classList.remove('ws-error'); clearTooltip(inp); if(inp.dataset.wsState!=='valid') inp.dataset.wsState='clean'; }
+        function softValidate(row){
+          const inp = row.querySelector('.ws-input'); const sel=row.querySelector('.ws-type'); if(!inp||!sel) return;
+          const val = inp.value.trim();
+          const res = validateValue(sel.value,val);
+          const focused = document.activeElement===inp;
+          if(res.ok || !val){ clearError(inp); inp.dataset.wsState = val? 'valid':'clean'; return; }
+          // invalid
+          if(focused){ // suppress while editing
+            clearError(inp); // ensure styling removed
+            inp.dataset.wsState='editing-invalid';
+          } else {
+            showError(inp,res);
+          }
+        }
+        function forceValidate(row){
+          const inp = row.querySelector('.ws-input'); const sel=row.querySelector('.ws-type'); if(!inp||!sel) return;
+          const val = inp.value.trim();
+          const res = validateValue(sel.value,val);
+          if(res.ok || !val){ clearError(inp); inp.dataset.wsState = val? 'valid':'clean'; }
+          else { showError(inp,res); }
+        }
+        function revalidateAll(){ Array.from(container.children).forEach(r=>forceValidate(r)); }
         function updateAddButtons(){
           const rows = Array.from(container.children);
           rows.forEach((r,i)=>{
@@ -564,9 +580,15 @@
           const sel = wrap.querySelector('.ws-type');
           const inp = wrap.querySelector('.ws-input');
           if(sel && inp) inp.placeholder = placeholderFor(sel.value);
-          inp.addEventListener('blur', () => applyValidation(wrap));
-          inp.addEventListener('input', () => applyValidation(wrap));
-          sel.addEventListener('change', () => { applyValidation(wrap); });
+          inp.addEventListener('blur', () => forceValidate(wrap));
+          inp.addEventListener('focus', () => {
+            // If currently invalid, suppress while editing
+            if(inp.dataset.wsState==='invalid'){ clearError(inp); inp.dataset.wsState='editing-invalid'; }
+          });
+          if(sel){
+            sel.addEventListener('focus', () => { sel.dataset.prevType = sel.value; });
+          }
+          sel.addEventListener('change', () => { forceValidate(wrap); });
           updateAddButtons();
           return wrap;
         }
@@ -593,13 +615,18 @@
         container.addEventListener('change', (e)=>{
           const target = e.target;
           if(!(target instanceof HTMLElement)) return;
-          if(target.classList.contains('ws-type')) {
+      if(target.classList.contains('ws-type')) {
             const row = target.closest('div');
             const inp = row?.querySelector('.ws-input');
             if(inp) {
-              inp.placeholder = placeholderFor(target.value);
+              const prev = target.dataset.prevType || '';
+              const next = target.value;
+              // No longer clearing value when switching to/from length; just update placeholder and revalidate
+              inp.placeholder = placeholderFor(next);
               inp.focus();
               try { inp.select(); } catch(_){ }
+              target.dataset.prevType = next; // update for next transition
+        forceValidate(row);
             }
           }
         });
@@ -623,9 +650,21 @@
             const newPos = filteredBefore.length;
             try { el.setSelectionRange(newPos, newPos); } catch(_){ }
           }
-          // Revalidate after filtering
-          if(row) applyValidation(row);
+      // Soft validation (suppresses error while actively typing)
+      if(row) softValidate(row);
+      // Debounce forced validation (1s idle)
+      if(el._valTimer) clearTimeout(el._valTimer);
+      el._valTimer = setTimeout(()=>{ if(document.contains(el)) forceValidate(row); },1000);
         });
+        // Track hover state so we can auto-pop tooltip on new errors while focused
+        container.addEventListener('pointerenter', (e)=>{
+          const t = e.target; if(!(t instanceof HTMLInputElement) || !t.classList.contains('ws-input')) return;
+          t.dataset.wsHover='1';
+        }, true);
+        container.addEventListener('pointerleave', (e)=>{
+          const t = e.target; if(!(t instanceof HTMLInputElement) || !t.classList.contains('ws-input')) return;
+          t.dataset.wsHover='0';
+        }, true);
         ensureAtLeastOne();
         // Periodic revalidation in case external state changes (lightweight)
         setInterval(()=>{ revalidateAll(); }, 4000);

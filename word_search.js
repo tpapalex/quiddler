@@ -557,39 +557,101 @@ function _scanDigraphParens(input, { strip = true, requireValid = true, allowPar
 
 // Regex validation (simplified dialect: letters, ., *, + only). Parentheses invalid here.
 function validateRegex(pattern) {
-  if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] };
+  if (pattern == null) return { ok:false, errors:[vErr('invalid','Unmatched parentheses')] }; // generic null treated later by UI
   const raw = String(pattern); const input = raw.trim();
-  if (!input) return { ok:false, errors:[vErr('empty-pattern','Pattern is empty')] };
-  const invalid = new Set();
-  // First scan parentheses/digraphs (if digraph set exists). We allow parentheses only for valid digraphs.
-  const parenScan = _scanDigraphParens(input, { strip:true, requireValid:true, allowParens:true, allowNested:false });
-  for (const ch of parenScan.stripped) {
-    if (/[a-z]/i.test(ch) || ch==='.' || ch==='*' || ch==='+' ) continue;
-    if (!/\s/.test(ch)) invalid.add(ch);
-  }
-  const errors = [...parenScan.errors];
-  if (invalid.size) errors.push(vErr('invalid-chars','Invalid characters present',{ chars:[...invalid] }));
-  if (errors.length) return { ok:false, errors };
-  return { ok:true, normalized: parenScan.stripped, type:'regex' };
+  if (!input) return { ok:false, errors:[vErr('empty','Empty pattern')] };
+  return buildMinimalValidation('regex', input);
 }
 
 // Shared for anagram / subanagram inputs
 function validateAnagramLike(pattern, type) {
-  if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] };
+  if (pattern == null) return { ok:false, errors:[vErr('invalid','Unmatched parentheses')] };
   const raw = String(pattern); const input = raw.trim();
-  if (!input) return { ok:false, errors:[vErr('empty-pattern','Pattern is empty')] };
-  const invalid = new Set();
-  const scan = _scanDigraphParens(input, { strip:false, requireValid:true, allowParens:true, allowNested:false });
-  for (const ch of input.replace(/\([^)]+\)/g,'')) { // remove paren groups for char validation
-    if (!/[a-z]/i.test(ch) && !/\s/.test(ch)) invalid.add(ch);
-  }
-  const errors = [...scan.errors];
-  if (invalid.size) errors.push(vErr('invalid-chars','Invalid characters present',{ chars:[...invalid] }));
-  if (errors.length) return { ok:false, errors };
-  return { ok:true, normalized: input, type };
+  if (!input) return { ok:false, errors:[vErr('empty','Empty pattern')] };
+  return buildMinimalValidation(type==='subanagrams'?'subanagram':type, input);
 }
 function validateAnagrams(p) { return validateAnagramLike(p,'anagrams'); }
 function validateSubanagrams(p) { return validateAnagramLike(p,'subanagrams'); }
+
+// --- Minimal validation builder (shared) ---
+// Priority:
+// 1. Unmatched parentheses -> 'Unmatched parentheses'
+// 2. Nested parentheses   -> 'Nested parentheses'
+// 3. Parentheses tokens length > 2 -> 'Invalid pattern in parentheses: aaaa, bbb'
+// 4. Invalid digraphs (length 2 but not in DIGRAPHS) -> 'Invalid digraphs: xx, yy'
+// 5. Invalid characters -> 'Invalid characters: %, @'
+function buildMinimalValidation(kind, input){
+  // Collect parenthesis tokens & structural issues
+  const unmatched = { open:false, close:false };
+  let nested = false;
+  const invalidPatternTokens = new Set(); // tokens whose length != 2 OR contain non-letters
+  const invalidDigraphs = new Set();      // length 2 tokens not in digraph list
+  const digraphSet = DIGRAPHS || new Set();
+  let open=false; let start=-1; let depth=0; const chars=[...input];
+  for (let i=0;i<chars.length;i++) {
+    const ch = chars[i];
+    if (ch==='(') {
+      if (open) nested = true; // '(' inside open without closing
+      open = true; start = i; depth++;
+      if (depth>1) nested = true;
+      continue;
+    }
+    if (ch===')') {
+      if (!open) { unmatched.close = true; continue; }
+      const token = input.slice(start+1, i);
+      // classify token
+      if (/^[a-zA-Z]+$/.test(token)) {
+        const low = token.toLowerCase();
+        if (token.length === 2) {
+          if (!digraphSet.has(low)) invalidDigraphs.add(low); // valid length, but not an existing digraph
+        } else { // length 1 or >2
+          invalidPatternTokens.add(low);
+        }
+      } else {
+        invalidPatternTokens.add(token.toLowerCase());
+      }
+      open=false; depth--; if (depth<0) depth=0; // safety
+      continue;
+    }
+  }
+  if (open) unmatched.open = true;
+  // Build invalid character set (ignore inside logic, just scan globally with allowed sets)
+  const invalidChars = new Set();
+  // Remove paren groups for invalid char scanning (except we still count parentheses themselves only for unmatched logic)
+  const stripped = input.replace(/\([^)]+\)/g,'');
+  for (const ch of stripped) {
+    if (/[a-zA-Z]/.test(ch)) continue;
+    if (kind==='regex') { if (ch==='.'||ch==='*'||ch==='+'||/\s/.test(ch)||ch==='('||ch===')') continue; }
+    else { if (/\s/.test(ch) || ch==='(' || ch===')') continue; }
+    if (kind==='length') { if (/[0-9+\-<=]/.test(ch)) continue; }
+    invalidChars.add(ch);
+  }
+  // Priority selection
+  if (unmatched.open || unmatched.close) return { ok:false, errors:[vErr('unmatched','Unmatched parentheses')] };
+  if (nested) return { ok:false, errors:[vErr('nested','Nested parentheses')] };
+  if (invalidPatternTokens.size) {
+    const listed = [...invalidPatternTokens].map(t=>'('+t+')').join(', ');
+    return { ok:false, errors:[vErr('invalid-digraph-pattern','Invalid digraph pattern: '+listed)] };
+  }
+  if (invalidDigraphs.size) {
+    const listed = [...invalidDigraphs].map(t=>'('+t+')').join(', ');
+    return { ok:false, errors:[vErr('bad-digraph','Non-existent digraphs: '+listed)] };
+  }
+  if (invalidChars.size) return { ok:false, errors:[vErr('invalid-chars','Invalid characters: '+[...invalidChars].join(', '))] };
+  return { ok:true, normalized: normalizePostValidation(kind, input), type: kind };
+}
+
+function normalizePostValidation(kind, input){
+  // For regex we still need stripped form (remove valid digraph parens tokens)
+  if (kind==='regex') {
+    // Remove parentheses around valid digraphs only
+    return input.replace(/\(([a-zA-Z]+)\)/g,(m,inner)=>{
+      const low=inner.toLowerCase();
+      return (DIGRAPHS && DIGRAPHS.has(low)) ? inner : m; // keep original if not valid digraph (will have errored earlier)
+    });
+  }
+  return input;
+}
 
 // ------------------ Length Pattern Parsing & Validation ------------------
 // Supported syntaxes (whitespace ignored):

@@ -142,7 +142,10 @@ function initToolsDrawer(){
       if (!isOpen) return;
       if (isDict) document.getElementById('dictInput')?.focus();
       else if (isPlay) document.getElementById('tilesInput')?.focus();
-      else if (isSearch) document.getElementById('searchInput')?.focus();
+      else if (isSearch) {
+        const first = document.querySelector('#searchRows .ws-input');
+        if(first){ first.focus(); try { first.select(); } catch(_){ } }
+      }
     }, 0);
 
     if (which === 'play') {
