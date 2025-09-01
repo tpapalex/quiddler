@@ -285,7 +285,9 @@ function initToolsDrawer(){
   const optCurrentLongest = document.getElementById('optCurrentLongest');
   const optCurrentMost    = document.getElementById('optCurrentMost');
   const playGo            = document.getElementById('playGo');
-  const playStatus        = document.getElementById('playStatus');
+  // Status now lives inside the button (spinner + label)
+  const playStatus        = null;
+  const playGoLabel       = document.getElementById('playGoLabel');
   const playResult        = document.getElementById('playResult');
   const optApiFilter      = document.getElementById('optApiFilter'); // RENAMED
 
@@ -353,24 +355,54 @@ function initToolsDrawer(){
     const currentLongest = cleanInt(optCurrentLongest);
     const currentMost    = cleanInt(optCurrentMost);
     const apiFilter      = !!optApiFilter?.checked; // RENAMED
-
-    playStatus.textContent = 'Searching…';
+    // Show solving indicator & disable button to avoid re-entry
+    if (playGo) {
+      playGo.disabled = true;
+      playGo.classList.add('opacity-60','pointer-events-none');
+      playGo.setAttribute('aria-busy','true');
+      if (playGoLabel) playGoLabel.textContent = 'Solving…';
+    }
     playResult.classList.remove('hidden');
     playResult.innerHTML = '';
 
+  // Yield to the browser so the Solving… text & disabled state can paint before heavy sync work.
+  // Using double rAF fallback to ensure a paint even on slower devices.
+  await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+  // (If still insufficient for very large racks, consider chunking solver logic or moving to a Web Worker.)
+
     try {
-      const result = await window.QuiddlerSolver.optimize({ tiles, noDiscard, commonOnly, override2and3, minZipF, currentLongest, currentMost, apiFilter });
+      // 10s timeout wrapper
+  const TIMEOUT_MS = 5000; // reduced from 10s to 5s
+      let timedOut = false;
+      const result = await Promise.race([
+        window.QuiddlerSolver.optimize({ tiles, noDiscard, commonOnly, override2and3, minZipF, currentLongest, currentMost, apiFilter }),
+        new Promise(res => setTimeout(()=>{ timedOut = true; res(null); }, TIMEOUT_MS))
+      ]);
 
-      playStatus.textContent = '';
+      if (playGo) {
+        playGo.disabled = false;
+        playGo.classList.remove('opacity-60','pointer-events-none');
+        playGo.removeAttribute('aria-busy');
+        if (playGoLabel) playGoLabel.textContent = 'Solve';
+      }
 
-      if (result && Array.isArray(result.words) && result.words.length > 0) {
+      if (timedOut) {
+        playResult.innerHTML = '<div class="text-sm text-red-600">Solver took too long. Try simplifying options or a smaller rack.</div>';
+      } else if (result && result._timedOut) {
+        playResult.innerHTML = '<div class="text-sm text-red-600">Solver took too long. Try simplifying options or a smaller rack.</div>';
+      } else if (result && Array.isArray(result.words) && result.words.length > 0) {
         window.QuiddlerRender.renderOptimizedPlayFromResult('playResult', result);
       } else {
-        playResult.innerHTML = '<div class="text-sm text-gray-500">No playable words found.</div>';
+        playResult.innerHTML = '<div class="text-sm text-red-600">No playable words found.</div>';
       }
     } catch (err) {
       console.error(err);
-      playStatus.textContent = '';
+      if (playGo) {
+        playGo.disabled = false;
+        playGo.classList.remove('opacity-60','pointer-events-none');
+        playGo.removeAttribute('aria-busy');
+        if (playGoLabel) playGoLabel.textContent = 'Solve';
+      }
       playResult.innerHTML = '<div class="text-sm text-red-600">Error computing best play.</div>';
     }
   }
@@ -427,7 +459,7 @@ function initToolsDrawer(){
       if (!longestBonusEnabled && optCurrentLongest) optCurrentLongest.value = '0';
       if (!mostBonusEnabled && optCurrentMost)       optCurrentMost.value    = '0';
 
-      if (playStatus) playStatus.textContent = '';
+  // No external status span now.
       if (playResult) {
         playResult.innerHTML = '';
         playResult.classList.add('hidden');

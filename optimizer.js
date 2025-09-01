@@ -104,6 +104,7 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
     minLen = 2,
     maxLen = Infinity,
     allowSingleDigraph = false,
+    budget = null, // { start, budgetMs, timedOut }
   } = opts;
 
   const out = [];
@@ -149,19 +150,31 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
     }
   }
 
+  let visitCounter = 0;
   function dfs(node, singleCounts, digraphCounts) {
+    if (budget && !budget.timedOut) {
+      // Check every 64 visits to amortize cost
+      if ((visitCounter & 63) === 0) {
+        const now = performance && performance.now ? performance.now() : Date.now();
+        if (now - budget.start > budget.budgetMs) { budget.timedOut = true; return; }
+      }
+    }
+    visitCounter++;
+    if (budget && budget.timedOut) return;
     if (node.end && path.length >= minLen) pushResult();
     if (path.length >= maxLen) return; // stop expanding further
 
     for (const [L, c] of Object.entries(singleCounts)) {
-      if (c > 0 && node.children[L] && path.length + 1 <= maxLen) {
+  if (budget && budget.timedOut) return;
+  if (c > 0 && node.children[L] && path.length + 1 <= maxLen) {
         singleCounts[L]--; path.push(L); usedTokens.push(L);
         dfs(node.children[L], singleCounts, digraphCounts);
         usedTokens.pop(); path.pop(); singleCounts[L]++;
       }
     }
     for (const [DG, c] of Object.entries(digraphCounts)) {
-      if (c > 0) {
+  if (budget && budget.timedOut) return;
+  if (c > 0) {
         const a = DG[0], b = DG[1];
         const n1 = node.children[a], n2 = n1 && n1.children[b];
         if (n2 && path.length + 2 <= maxLen) {
@@ -180,7 +193,7 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
 }
 
 // ---------- Choose best play (no-flatten discard, leftover penalty, strict bonuses) ----------
-function chooseBestPlay(candidates, rackCounts, params = {}) {
+function chooseBestPlay(candidates, rackCounts, params = {}, budget = null) {
   // Greedy sort for heuristic ordering; search is exhaustive with a pruning upper bound (ub).
   // leftover penalty: sum(points of unused tiles) minus best discard if allowed.
   // bonuses apply only if strictly exceeding opponents' currentLongest/currentMost thresholds.
@@ -312,6 +325,11 @@ function chooseBestPlay(candidates, rackCounts, params = {}) {
   }
 
   function dfs(i) {
+    if (budget && !budget.timedOut) {
+      const now = performance && performance.now ? performance.now() : Date.now();
+      if (now - budget.start > budget.budgetMs) { budget.timedOut = true; return; }
+    }
+    if (budget && budget.timedOut) return;
     const ub = cur.baseScore + remainingValue() + longestBonus + mostBonus;
     if (ub <= best.totalScore) return;
 
@@ -374,6 +392,12 @@ async function optimize(params) {
   } = params || {};
 
   const rack = parseCards(String(tiles)).map(normalizeToken);
+  const startTime = performance && performance.now ? performance.now() : Date.now();
+  const TIME_BUDGET_MS = params && Number.isFinite(params.timeBudgetMs) ? params.timeBudgetMs : 5000; // soft budget (5s)
+  function timedOut(){
+    const now = performance && performance.now ? performance.now() : Date.now();
+    return now - startTime > TIME_BUDGET_MS;
+  }
   const rackCounts = countRack(rack, DIGRAPHS);
 
   const lemmatizer = (typeof window !== 'undefined') ? window.winkLemmatizer : undefined;
@@ -387,7 +411,14 @@ async function optimize(params) {
 
   // Use the global, lazily-initialized trie instead of rebuilding each time
   const trie = getValidWordTrie();
-  const candidates = generateWordCandidates(trie, rackCounts, { commonGate, minLen: 2 });
+  const budget = { start: startTime, budgetMs: TIME_BUDGET_MS, timedOut: false };
+  const candidates = generateWordCandidates(trie, rackCounts, { commonGate, minLen: 2, budget });
+  if (budget.timedOut) {
+    return { words: [], baseScore:0, leftoverValue:0, bonus:{longest:0, most:0}, totalScore:0, longestWordLength:0, wordCount:0, discardTile:null, unusedTiles:rack.slice(), _timedOut:true };
+  }
+  if (timedOut()) { // fallback safeguard
+    return { words: [], baseScore:0, leftoverValue:0, bonus:{longest:0, most:0}, totalScore:0, longestWordLength:0, wordCount:0, discardTile:null, unusedTiles:rack.slice(), _timedOut:true };
+  }
 
   let bestplay = chooseBestPlay(candidates, rackCounts, {
     noDiscard,
@@ -395,7 +426,10 @@ async function optimize(params) {
     currentMost:    currentMost    === 0 ? Infinity : currentMost,
     longestBonus: longestWordPoints,
     mostBonus:    mostWordsPoints,
-  });
+  }, budget);
+  if (budget.timedOut || timedOut()) {
+    return Object.assign(bestplay || {}, { _timedOut: true });
+  }
 
   if (apiFilter) {
     if (typeof validateWordAPIBatch !== 'function') {
@@ -420,7 +454,10 @@ async function optimize(params) {
           currentMost:    currentMost    === 0 ? Infinity : currentMost,
           longestBonus: longestWordPoints,
           mostBonus:    mostWordsPoints,
-        });
+        }, budget);
+        if (budget.timedOut || timedOut()) {
+          return Object.assign(bestplay || {}, { _timedOut: true });
+        }
         iterations++;
       }
     }

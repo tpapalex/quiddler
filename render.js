@@ -356,79 +356,63 @@ function initChitTooltips(container = document) {
 }
 
 function renderOptimizedPlayFromResult(containerId, result) {
-  // Renders solver result as chits:
-  // - words[] as neutral chits with forced def icons
-  // - unusedTiles collapsed into a single invalid '-' chit
-  // - discardTile shown as a yellow neutral '-' chit (informational)
+  // New presentation to mirror search output style:
+  // 1. Header line: "Score <total>" (bold)
+  // 2. Breakdown line: Base and bonus emojis (no parentheses) regular text
+  // 3. Each chit (solution words, then unused, then discard) on its own centered row
   const el = document.getElementById(containerId);
   if (!el) return;
 
-  const usedWordChits = (result.words || [])
-    .map(w => renderChit(
-      { text: w.word, score: w.score, state: 'neutral' },
-      { interactive: false, forceState: 'neutral', forceShowDefIcon: true, showDefIcon: true }
-    ))
-    .join(' ');
-
-  let unusedChitHTML = '';
-  if (Array.isArray(result.unusedTiles) && result.unusedTiles.length) {
-    const toTok = toCardToken;
-    const parse = parseCards;
-    const calc  = calculateScore;
-
-    const combined = '-' + result.unusedTiles.map(toTok).join('');
-    const unusedScore = calc(parse(combined.replace('-', '')));
-    unusedChitHTML = renderChit(
-      { text: combined, score: unusedScore, state: 'invalid' },
-      { interactive: false, forceState: 'invalid', showDefIcon: false }
-    );
-  }
-
-  let discardChitHTML = '';
-  if (result.discardTile) {
-    const toTok = toCardToken;
-    const parse = parseCards;
-    const calc  = calculateScore;
-
-    const discardText = '-' + toTok(result.discardTile);
-    const discardScore = calc(parse(discardText.replace('-', '')));
-    discardChitHTML = renderChit(
-      { text: discardText, score: discardScore, state: 'neutral' },
-      {
-        interactive: false,
-        forceState: 'neutral',
-        showDefIcon: false,
-        extraClasses: 'bg-yellow-200'
-      }
-    );
-  }
-
+  const words = Array.isArray(result.words) ? result.words : [];
   const base = Number(result.baseScore ?? 0);
   const leftover = Number(result.leftoverValue ?? 0);
   const baseShown = Math.max(base - leftover, 0);
-
   const bLong = Number(result?.bonus?.longest ?? 0);
   const bMost = Number(result?.bonus?.most ?? 0);
   const total = Number(result.totalScore ?? (base + bLong + bMost));
-  const hasBonus = Boolean(bLong || bMost);
 
-  const breakdownInline = hasBonus
-    ? ` <span class="text-gray-600 text-[18px]">(${baseShown}${bLong ? ' + 🦒' : ''}${bMost ? ' + 🥒' : ''})</span>`
-    : '';
+  // Build word chits (one per row) using same styling as search (extraClasses '!m-0')
+  const wordRows = words.map(w => {
+    return `<div class="flex justify-center">${renderChit(
+      { text: w.word, score: w.score, state: 'neutral' },
+      { interactive:false, forceState:'neutral', forceShowDefIcon:true, showDefIcon:true, extraClasses:'!m-0' }
+    )}</div>`;
+  });
+
+  // Unused tiles chit row
+  if (Array.isArray(result.unusedTiles) && result.unusedTiles.length) {
+    const combined = '-' + result.unusedTiles.map(toCardToken).join('');
+    const unusedScore = calculateScore(parseCards(combined.replace('-', '')));
+    wordRows.push(`<div class="flex justify-center">${renderChit(
+      { text: combined, score: unusedScore, state: 'invalid' },
+      { interactive:false, forceState:'invalid', showDefIcon:false, extraClasses:'!m-0' }
+    )}</div>`);
+  }
+
+  // Discard tile chit row
+  if (result.discardTile) {
+    const discardText = '-' + toCardToken(result.discardTile);
+    const discardScore = calculateScore(parseCards(discardText.replace('-', '')));
+    wordRows.push(`<div class="flex justify-center">${renderChit(
+      { text: discardText, score: discardScore, state: 'neutral' },
+      { interactive:false, forceState:'neutral', showDefIcon:false, extraClasses:'bg-yellow-200 !m-0' }
+    )}</div>`);
+  }
+
+  // Breakdown line
+  let breakdown = `Base ${baseShown}`;
+  if (bLong) breakdown += ` 🦒${bLong}`;
+  if (bMost) breakdown += ` �${bMost}`;
 
   el.innerHTML = `
-    <div class="space-y-2">
-      <div class="flex items-baseline gap-2">
-        <span class="text-[18px] font-semibold">Score:</span>
-        <span class="text-[18px] font-semibold tabular-nums">${total}</span>
-        ${breakdownInline}
-      </div>
-      <div class="flex flex-wrap items-center gap-1">
-        ${usedWordChits} ${unusedChitHTML} ${discardChitHTML}
-      </div>
+    <div class="space-y-2 text-center text-sm">
+      <div class="font-bold text-sm">Score <span class="tabular-nums">${total}</span></div>
+      <div class="text-gray-600">${breakdown}</div>
+      <div class="flex flex-col gap-2 items-center mt-2">${wordRows.join('')}</div>
     </div>
   `;
 
+  // Wire definition icon clicks
   el.querySelectorAll('.def-open').forEach(icon => {
     icon.addEventListener('click', async (e) => {
       e.stopPropagation();

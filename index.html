@@ -313,12 +313,9 @@
             </div>
           </div>
 
-          <!-- Action + Status -->
-          <div class="mt-3 pt-2 flex items-center gap-2">
-            <button id="playGo" class="bg-blue-500 text-white px-3 py-2 rounded-lg">
-              Solve
-            </button>
-            <span id="playStatus" class="text-sm text-gray-500"></span>
+          <!-- Action (spinner + label inside button) -->
+          <div class="mt-3 pt-2 flex items-center gap-2 justify-end">
+            <button id="playGo" class="inline-flex items-center gap-2 justify-center h-9 px-4 rounded-md border border-blue-600/40 bg-blue-600/10 text-blue-700 hover:bg-blue-600/20 active:bg-blue-600/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-50 transition text-sm font-medium" type="button"><span id="playGoLabel">Solve</span></button>
           </div>
 
           <!-- Results -->
@@ -331,8 +328,8 @@
           <div id="searchRows" class="mb-2"></div>
           <!-- Inline sort control appears in results -->
           <div class="mt-2 flex items-center gap-3 justify-end">
-            <button id="searchReset" class="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-60" type="button">Reset</button>
-            <button id="searchGo" class="bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-60" type="button">Search</button>
+            <button id="searchReset" class="inline-flex items-center justify-center h-9 px-4 rounded-md border border-red-500/40 bg-red-500/10 text-red-600 hover:bg-red-500/20 active:bg-red-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40 disabled:opacity-50 transition text-sm font-medium" type="button">Reset</button>
+            <button id="searchGo" class="inline-flex items-center justify-center h-9 px-4 rounded-md border border-blue-600/40 bg-blue-600/10 text-blue-700 hover:bg-blue-600/20 active:bg-blue-600/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-50 transition text-sm font-medium" type="button">Search</button>
             <span id="searchStatus" class="text-sm text-gray-500 hidden"></span>
           </div>
           <div id="searchResult" class="mt-2 text-sm hidden flex-1 min-h-0 flex flex-col"></div>
