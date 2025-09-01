@@ -121,72 +121,6 @@ function renderRowControls(roundIdx, player, extraRightHTML = '') {
   `;
 }
 
-// ---------- Row validation (subtle) ----------
-function buildRowValidationIssues(pdata, expectedCards) {
-  try {
-    const cards = window.QuiddlerData?.cardScores || (typeof cardScores !== 'undefined' ? cardScores : {});
-
-    let recognizedCount = 0;      // tokens matched by the parser
-    let unknownDeck = [];         // matched tokens not in deck (normalized)
-    let unmatchedFragments = [];  // characters/spans the parser could not consume (incl. midword '-')
-
-    (pdata || []).forEach(w => {
-      const txt = String(w?.text || '');
-      const core = txt.startsWith('-') ? txt.slice(1) : txt;
-
-      // Scan core, capturing matched tokens and gaps that are not parsed
-      const re = /\([a-z]+\)|[a-z]/gi;
-      let m;
-      let idx = 0;
-      const matchedTokens = [];
-      while ((m = re.exec(core)) !== null) {
-        const gap = core.slice(idx, m.index);
-        if (gap.length) {
-          // record raw gap segments split by whitespace; keep punctuation like '-' as its own token
-          gap.split(/\s+/).forEach(seg => { if (seg) unmatchedFragments.push(seg); });
-        }
-        matchedTokens.push(m[0]);
-        idx = m.index + m[0].length;
-      }
-      const tail = core.slice(idx);
-      if (tail.length) {
-        tail.split(/\s+/).forEach(seg => { if (seg) unmatchedFragments.push(seg); });
-      }
-
-      // Tally recognized tokens and unknown deck items
-      recognizedCount += matchedTokens.length;
-      matchedTokens.forEach(t => {
-        const norm = normalizeToken(t);
-        if (!(norm in cards)) unknownDeck.push(norm);
-      });
-    });
-
-    // Compute total found as recognized tokens plus unmatched fragments
-    const foundCount = recognizedCount + unmatchedFragments.length;
-
-    const issues = [];
-
-    // Combine all invalid items under one line
-    const invalidItems = Array.from(new Set([
-      // display tokens for unknown deck items
-      ...unknownDeck.map(toCardToken),
-      // raw unmatched fragments
-      ...unmatchedFragments
-    ]));
-
-    // Instead of pushing invalid first then total mismatch, push total mismatch first so it appears above
-    if (Number.isFinite(expectedCards) && expectedCards > 0 && foundCount !== expectedCards && foundCount > 0) {
-      issues.push(`Total cards: ${foundCount} (≠ ${expectedCards})`);
-    }
-    if (invalidItems.length) {
-      issues.push(`Invalid cards: ${invalidItems.join(', ')}`);
-    }
-
-    return issues;
-  } catch (e) {
-    return [];
-  }
-}
 
 function escapeHtml(s){
   return String(s)
@@ -207,12 +141,18 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedC
 
   let issues = [];
   if (isNoSubmission) {
-    // Suppress for current unfinalized (in-progress) round; show for finalized rounds
-    if (!(round && round.finalized === false)) {
-      issues = ['No submission'];
-    }
+    if (!(round && round.finalized === false)) issues = ['No submission'];
   } else {
-    issues = buildRowValidationIssues(pdata, expectedCards);
+    // Reconstruct raw text from words (ensure penalty chits last just in case)
+    const wordsArr = pdata.slice();
+    const penalties = wordsArr.filter(w=>w.text.startsWith('-'));
+    const nonPen = wordsArr.filter(w=>!w.text.startsWith('-'));
+    const raw = [...nonPen, ...penalties].map(w=>w.text).join(' ');
+    if (window.QuiddlerValidation?.validatePlayerWords) {
+      const res = window.QuiddlerValidation.validatePlayerWords(raw, { expectedCards });
+      if (res.status === 'error') issues.push(res.message || 'Invalid');
+      else if (res.status === 'warning') issues.push(res.message);
+    }
   }
 
   const valHTML = (() => {
@@ -225,7 +165,7 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedC
       }
       return escaped;
     });
-    return `<span class="text-red-600 text-xs cursor-help row-val-flag" data-tippy-content="${htmlPieces.join('<br/>')}" title="">🚩</span>`;
+  return `<span class="text-red-600 text-xs cursor-help row-val-flag" data-tippy-content="${htmlPieces.join('<br/>')}" title="">🚩</span>`;
   })();
 
   const controls = interactive ? renderRowControls(roundIdx, player, valHTML) : '';

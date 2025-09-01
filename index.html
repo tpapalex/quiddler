@@ -26,7 +26,7 @@
       }
       /* Plain (native-like) tooltip theme for fast tippy tooltips */
       .tippy-box[data-theme~='plain'] { background:#555; color:#fff; font-size:12px; line-height:1.2; padding:2px 4px; border-radius:2px; border:1px solid #777; box-shadow:none; }
-      .tippy-box[data-theme~='plain'] .tippy-content { padding:0; }
+  .tippy-box[data-theme~='plain'] .tippy-content { padding:0; white-space:pre-line; }
       .tippy-box[data-theme~='plain'] .tippy-arrow { display:none !important; }
       /* Mobile collapsible FAB behavior */
       @media (max-width: 639.5px) {
@@ -51,6 +51,9 @@
   .ws-error { border-color:#fda4af !important; background:#fff1f2; box-shadow:0 0 0 1px #fda4af inset; }
   /* On focus show inner red outline + outer soft red ring (fully red-themed) */
   .ws-error:focus { box-shadow:0 0 0 1px #f87171 inset, 0 0 0 3px #fecaca; }
+  /* Warning (non-blocking) styling */
+  .ws-warn { border-color:#fcd34d !important; background:#fffbeb; box-shadow:0 0 0 1px #fcd34d inset; }
+  .ws-warn:focus { box-shadow:0 0 0 1px #fbbf24 inset, 0 0 0 3px #fde68a; }
   /* Custom focus style for valid (non-error) primary text inputs where Tailwind rings were removed */
   #tilesInput:focus:not(.ws-error),
   .player-words:focus:not(.ws-error) {

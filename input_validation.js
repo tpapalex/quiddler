@@ -2,7 +2,7 @@
 // Provides debounced soft validation + hard validation on blur for arbitrary text inputs.
 // Usage: InputValidation.register({
 //   selector: '.player-words',
-//   validate: (value)=> ({ ok:true } | { ok:false, error:'msg' }),
+//   validate: (value)=> ({ status:'ok' } | { status:'warning', message:'msg' } | { status:'error', message:'msg' })
 //   allowed: /[a-zA-Z\s\-()]/g,          // regex OR function(event, el, prev) -> filteredValue
 //   debounceMs: 700,
 //   groupId: 'players',
@@ -76,35 +76,48 @@
     return el.value;
   }
 
-  function clearError(el, meta){
-    el.classList.remove(meta.errorClass);
+  function clearIssue(el, meta){
+    el.classList.remove(meta.errorClass, meta.warningClass);
     if (el._tippy) { try { el._tippy.hide(); } catch(_){} try { el._tippy.destroy(); } catch(_){} }
     setState(el, meta, el.value.trim()? 'valid':'pristine');
   }
-  function showError(el, meta, msg){
-    el.classList.add(meta.errorClass);
-    setState(el, meta, 'invalid');
+  function showIssue(el, meta, issue){
+    const { status, message } = issue;
+    el.classList.remove(meta.errorClass, meta.warningClass);
+    if (status === 'error') el.classList.add(meta.errorClass); else if (status === 'warning') el.classList.add(meta.warningClass);
+    setState(el, meta, status === 'error' ? 'error' : (status === 'warning' ? 'warning' : 'valid'));
+    if (status === 'ok') return;
     if (meta.showTooltipOn === 'never') return;
     if (window.tippy) {
-      if (el._tippy) { el._tippy.setContent(msg); }
+      if (el._tippy) { el._tippy.setContent(message); }
       else {
         const trigger = meta.showTooltipOn === 'hover+focus' ? 'mouseenter focus' : 'mouseenter';
-        tippy(el, { content:msg, animation:'scale', placement:'bottom', theme:'plain', trigger, hideOnClick:true, delay:[120,80] });
+        tippy(el, { content:message, animation:'scale', placement:'bottom', theme:'plain', trigger, hideOnClick:true, delay:[120,80] });
       }
       if (el._tippy && el.matches(':hover')) { try { el._tippy.show(); } catch(_){} }
-    } else el.title = msg;
+    } else el.title = message;
   }
   function softValidate(el, meta){
-    const val = el.value.trim(); if (!val){ clearError(el, meta); return; }
-    const res = safeValidate(meta.validate, val); if (res.ok) { clearError(el, meta); } else { showError(el, meta, res.error || 'Invalid'); }
+    const val = el.value.trim(); if (!val){ clearIssue(el, meta); return; }
+    const res = normalizeResult(safeValidate(meta.validate, val));
+    if (res.status === 'ok') clearIssue(el, meta); else showIssue(el, meta, res);
   }
   function hardValidate(el, meta){
-    const val = el.value.trim(); if (!val){ clearError(el, meta); return true; }
-    const res = safeValidate(meta.validate, val); if (res.ok) { clearError(el, meta); return true; }
-    showError(el, meta, res.error || 'Invalid'); return false;
+    const val = el.value.trim(); if (!val){ clearIssue(el, meta); return true; }
+    const res = normalizeResult(safeValidate(meta.validate, val));
+    if (res.status === 'ok') { clearIssue(el, meta); return true; }
+    showIssue(el, meta, res); return res.status !== 'error'; // return true if not blocking
   }
   function safeValidate(fn, val){
-    try { return fn(val) || { ok:true }; } catch(e){ return { ok:false, error: e && e.message || 'Invalid' }; }
+    try { return fn(val); } catch(e){ return { status:'error', message: e && e.message || 'Invalid' }; }
+  }
+  function normalizeResult(r){
+    if (!r) return { status:'ok' };
+    if (r.status) return r;
+    // legacy shape support (while WIP) - can be removed later
+    if (r.ok === true) return { status:'ok' };
+    if (r.ok === false) return { status:'error', message: r.error || 'Invalid' };
+    return { status:'ok' };
   }
   function setState(el, meta, next){
     const prev = el.dataset.ivState || 'pristine';
@@ -118,8 +131,9 @@
   function attachOne(el, cfg){
     if (registry.has(el)) return;
     const meta = {
-      id: nextId++, cfg, groupId: cfg.groupId, validate: cfg.validate || (v=>({ok:true})), allowed: cfg.allowed,
-      debounceMs: cfg.debounceMs ?? 700, showTooltipOn: cfg.showTooltipOn || 'hover', errorClass: cfg.errorClass || 'ws-error',
+  id: nextId++, cfg, groupId: cfg.groupId, validate: cfg.validate || (v=>({ status:'ok' })), allowed: cfg.allowed,
+  debounceMs: cfg.debounceMs ?? 700, showTooltipOn: cfg.showTooltipOn || 'hover', errorClass: (cfg.severityClasses && cfg.severityClasses.error) || cfg.errorClass || 'ws-error',
+  warningClass: (cfg.severityClasses && cfg.severityClasses.warning) || 'ws-warn',
       onStateChange: cfg.onStateChange
     };
     registry.set(el, meta);
@@ -128,7 +142,7 @@
 
     el.addEventListener('input', ev => {
       const prev = el.value; filterValue(el, meta.cfg, prev, ev);
-      if (el.dataset.ivState === 'invalid') clearError(el, meta); // clear style while editing
+  if (el.dataset.ivState === 'error' || el.dataset.ivState === 'warning') clearIssue(el, meta); // clear style while editing
       setState(el, meta, 'dirty');
       if (meta.timer) clearTimeout(meta.timer);
       meta.timer = setTimeout(()=>{ if(document.contains(el)) softValidate(el, meta); }, meta.debounceMs);
@@ -154,7 +168,8 @@
 
   function validateGroup(groupId){
     const els = groups.get(groupId); if(!els) return true; let allOk=true; els.forEach(el=>{ if(!hardValidate(el, registry.get(el)) && allOk){ try { el.focus(); el.select?.(); } catch(_){} allOk=false; } }); return allOk; }
-  function anyInvalid(groupId){ const els=groups.get(groupId); if(!els) return false; for(const el of els){ if((el.dataset.ivState==='invalid')) return true; } return false; }
+  function anyBlockingInvalid(groupId){ const els=groups.get(groupId); if(!els) return false; for(const el of els){ if(el.dataset.ivState==='error') return true; } return false; }
+  function anyWarnings(groupId){ const els=groups.get(groupId); if(!els) return false; for(const el of els){ if(el.dataset.ivState==='warning') return true; } return false; }
 
-  window.InputValidation = { register, validateGroup, anyInvalid };
+  window.InputValidation = { register, validateGroup, anyBlockingInvalid, anyWarnings };
 })();

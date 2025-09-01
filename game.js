@@ -172,22 +172,59 @@ function loadPreGameConfig() {
 // Register validation for player inputs immediately (dynamic attaches future ones)
 if (typeof window !== 'undefined') {
   const DIGRAPHS_SET = (typeof DIGRAPHS !== 'undefined') ? DIGRAPHS : new Set();
-  const validatePlayerWords = (text) => {
-    const trimmed = (text||'').trim(); if(!trimmed) return { ok:true };
+  const validatePlayerWords = (text, opts = {}) => {
+    const trimmed = (text||'').trim(); if(!trimmed) return { status:'ok' };
     let open=false,start=-1,nested=false; const badPattern=new Set(); const badDigraphs=new Set(); const badChars=new Set();
+    let interiorHyphen = false;
     for (let i=0;i<trimmed.length;i++) {
       const ch = trimmed[i];
       if (ch==='(') { if (open) nested=true; open=true; start=i; continue; }
-      if (ch===')') { if(!open) return { ok:false, error:'Unmatched parentheses' }; const token=trimmed.slice(start+1,i); if(!/^[a-zA-Z]+$/.test(token)) badPattern.add(token); else { if(token.length===1) badPattern.add(token); else if(token.length===2){ if(!DIGRAPHS_SET.has(token.toLowerCase())) badDigraphs.add(token); } else badPattern.add(token);} open=false; continue; }
+      if (ch===')') { if(!open) return { status:'error', message:'Unmatched parentheses' }; const token=trimmed.slice(start+1,i); if(!/^[a-zA-Z]+$/.test(token)) badPattern.add(token); else { if(token.length===1) badPattern.add(token); else if(token.length===2){ if(!DIGRAPHS_SET.has(token.toLowerCase())) badDigraphs.add(token); } else badPattern.add(token);} open=false; continue; }
       if(!/[a-zA-Z\s\-()]/.test(ch)) badChars.add(ch);
     }
-    if (open) return { ok:false, error:'Unmatched parentheses' };
-    if (nested) return { ok:false, error:'Nested parentheses' };
-    if (badPattern.size) return { ok:false, error:'Invalid digraph pattern: '+[...badPattern].map(t=>'('+t+')').join(', ') };
-    if (badDigraphs.size) return { ok:false, error:'Non-existent digraphs: '+[...badDigraphs].map(t=>'('+t+')').join(', ') };
-    if (badChars.size) return { ok:false, error:'Invalid characters: '+[...badChars].join(', ') };
-    return { ok:true };
+    if (open) return { status:'error', message:'Unmatched parentheses' };
+    if (nested) return { status:'error', message:'Nested parentheses' };
+    if (badPattern.size) return { status:'error', message:'Invalid digraph pattern: '+[...badPattern].map(t=>'('+t+')').join(', ') };
+    if (badDigraphs.size) return { status:'error', message:'Non-existent digraphs: '+[...badDigraphs].map(t=>'('+t+')').join(', ') };
+    if (badChars.size) return { status:'error', message:'Invalid characters: '+[...badChars].join(', ') };
+    // Token-level checks (after structural char scan)
+    const tokens = trimmed.split(/\s+/).filter(Boolean);
+    for (const tok of tokens) {
+      if (tok.includes('-')) {
+        // Allowed pattern: a single leading '-' (penalty chit) and no other hyphens
+        const firstIdx = tok.indexOf('-');
+        const secondIdx = tok.indexOf('-', firstIdx + 1);
+        const leadingOnly = firstIdx === 0 && secondIdx === -1; // exactly one hyphen at start
+        if (!leadingOnly) { interiorHyphen = true; break; }
+      }
+    }
+    if (interiorHyphen) return { status:'error', message:'Hyphen only allowed as leading "-" penalty chit' };
+    // Warning: more than one penalty chit
+    const penaltyCount = tokens.filter(t=>t.startsWith('-') && t.length>1).length;
+    const warnings = [];
+    if (penaltyCount > 1) warnings.push('Multiple penalty chits');
+    // Warning: card count mismatch with round size (digraph counts as ONE card)
+    try {
+      if (window.QuiddlerUI && typeof window.QuiddlerUI.tokensForWord === 'function') {
+        let totalCards = 0;
+        for (const tok of tokens) {
+          // Strip leading '-' for card composition; penalty chits still represent actual cards
+            const base = tok.replace(/^-/, '');
+            const cards = window.QuiddlerUI.parseCards ? window.QuiddlerUI.parseCards(base) : (base.match(/\([a-z]+\)|[a-z]/gi) || []);
+            totalCards += cards.length;
+        }
+        const expected = (opts && Number.isFinite(opts.expectedCards)) ? opts.expectedCards : currentRound;
+        if (Number.isFinite(expected) && totalCards && totalCards !== expected) {
+          warnings.push(`Uses ${totalCards} cards; round is ${expected}`);
+        }
+      }
+    } catch {}
+    if (warnings.length) return { status:'warning', message: warnings.join('\n') };
+    return { status:'ok' };
   };
+  // Export for reuse (row flag tooltips)
+  window.QuiddlerValidation = window.QuiddlerValidation || {};
+  window.QuiddlerValidation.validatePlayerWords = validatePlayerWords;
   if (window.InputValidation) {
     try {
       window.InputValidation.register({
@@ -632,6 +669,8 @@ function rebuildInputsFromExistingRound(round) {
 function submitPlayerPlay() {
   // UPDATED: Now submits ALL players' current inputs (playerName ignored).
   if (gameOver) return;
+  // Run a hard validation pass; ignore blocking errors for submission purposes
+  try { if (window.InputValidation) window.InputValidation.validateGroup('players'); } catch {}
   // Find or create unfinalized round for currentRound
   let round = roundsData.find(r => r.roundNum === currentRound && r.finalized === false);
   if (!round) {
@@ -647,16 +686,36 @@ function submitPlayerPlay() {
     roundsData.push(round);
   }
 
-  // For each player, parse their current input into word objects (similar logic likely exists elsewhere)
+  // For each player, parse their current input into word objects unless it has a blocking error
+  const errorInputs = [];
   document.querySelectorAll('.player-words').forEach(inp => {
     const p = inp.dataset.player; if (!p) return;
     const raw = inp.value.trim();
-    if (!raw) return; // blank => not submitted
-    const words = raw.split(/\s+/).filter(Boolean).map(t => ({ text:t, score:0, state:'neutral', challenger:null }));
+    const state = inp.dataset.ivState; // 'error' | 'warning' | 'valid' | 'dirty' | etc.
+    if (state === 'error') { errorInputs.push(inp); return; }
+    if (!raw) {
+      // Blank (non-error) input: treat as NOT submitted. Clear any prior submission.
+      round.players[p] = [];
+      if (round.submittedPlayers) delete round.submittedPlayers[p];
+      if (currentRoundDraftInputs) delete currentRoundDraftInputs[p];
+      return;
+    }
+    const consolidated = consolidatePenaltyChits(raw);
+    const words = consolidated.split(/\s+/).filter(Boolean).map(t => ({
+      text: t,
+      score: (typeof scoreForChit === 'function') ? scoreForChit(t) : 0,
+      state: t.startsWith('-') ? 'invalid' : 'neutral',
+      challenger: null
+    }));
     round.players[p] = words;
     if (words.length) round.submittedPlayers[p] = true; else delete round.submittedPlayers[p];
     if (currentRoundDraftInputs) delete currentRoundDraftInputs[p];
   });
+
+  // If there are blocking errors, focus the first one (but still accept other valid submissions)
+  if (errorInputs.length) {
+    try { errorInputs[0].focus(); errorInputs[0].select?.(); } catch {}
+  }
 
   recalculateScores();
   updatePreviousRounds();
@@ -949,7 +1008,8 @@ function saveEdit(player, roundIdx, btn) {
   if (!cell) return;
 
   const input = cell.querySelector('.edit-input');
-  const newWords = (input?.value || '').trim().split(/\s+/).filter(Boolean);
+  const consolidatedRaw = consolidatePenaltyChits((input?.value || '').trim());
+  const newWords = consolidatedRaw.split(/\s+/).filter(Boolean);
 
   roundsData[roundIdx].players[player] = newWords.map(word => ({
     text: word,
@@ -1544,11 +1604,34 @@ function skipRound() {
   if (existing) {
     const anySubmitted = existing.submittedPlayers && Object.keys(existing.submittedPlayers).length > 0;
     if (anySubmitted) {
-      if (!confirm('Some players have submitted entries this round. Skipping will discard them. Continue?')) return;
+  // Finalize the round automatically: keep existing submissions, auto-add blank zero submissions for the rest
+      existing.submittedPlayers = existing.submittedPlayers || {};
+      players.forEach(p => {
+        if (!existing.submittedPlayers[p]) {
+          // Ensure player entry exists as empty array (counts as no submission but finalized)
+            existing.players[p] = [];
+            existing.submittedPlayers[p] = true;
+        }
+      });
+      existing.finalized = true;
+      // NOT marked as skipped (we keep actual submissions)
+      recalculateScores();
+      updatePreviousRounds();
+      saveGameState();
+      if (currentRound < maxRound) {
+        currentRound += 1;
+        setupRound();
+        saveGameState();
+      } else {
+        endGame(true);
+      }
+      return;
+    } else {
+      // No submissions -> discard placeholder and create a skipped round below
+      roundsData = roundsData.filter(r => r !== existing);
     }
-    // Remove existing partial round
-    roundsData = roundsData.filter(r => r !== existing);
   }
+  // No existing round with submissions: record as a skipped round
   const dealerForRound = players[(currentDealerIdx - 1 + players.length) % players.length];
   const skippedRound = {
     roundNum: currentRound,
@@ -1570,3 +1653,16 @@ function skipRound() {
     endGame(true);
   }
 }
+
+// Consolidate multiple penalty chits: if more than one token begins with '-', merge them into a single leading '-' token
+function consolidatePenaltyChits(raw) {
+  if (!raw) return raw;
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  const penalties = tokens.filter(t=>t.startsWith('-'));
+  const others = tokens.filter(t=>!t.startsWith('-'));
+  if (!penalties.length) return raw;
+  // Always consolidate into a single penalty chit and move it to the end for consistent rendering
+  const combined = '-' + penalties.map(t=>t.replace(/^-/, '')).join('');
+  return [...others, combined].join(' ');
+}
+
