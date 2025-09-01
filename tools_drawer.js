@@ -169,15 +169,59 @@ function initToolsDrawer(){
   const dictInput  = document.getElementById('dictInput');
   const dictEmpty  = document.getElementById('dictEmpty');
   const LAST_DICT_WORD_KEY = 'quiddlerLastDictWord'; // NEW persistence key
+  const LAST_DICT_API_JSON_KEY = 'quiddlerLastDictApiJson'; // cache last successful Free Dictionary API JSON
+  // Register validation (letters only, single word)
+  (function registerDictValidation(){
+    if (!dictInput) return;
+    function validateDictWord(val){
+      const v = (val||'').trim();
+      if (!v) return { status:'ok' }; // pristine/empty fine
+      if (/\s/.test(v)) return { status:'error', message:'Single word only' };
+      if (!/^[A-Za-z]+$/.test(v)) return { status:'error', message:'Letters A-Z only' };
+      return { status:'ok' };
+    }
+    function doRegister(){
+      try {
+        if (!window.InputValidation) return false;
+        window.InputValidation.register({
+          selector: '#dictInput',
+            validate: (value, el) => validateDictWord(value),
+          allowed: /[A-Za-z]/g, // filters out spaces, digits, punctuation
+          debounceMs: 300,
+          groupId: 'dictionary',
+          dynamic: false,
+          showTooltipOn: 'hover+focus',
+          autoValidateOnLoad: false,
+          onStateChange: (el, prev, next) => { el.dataset.ivStateDict = next; }
+        });
+        return true;
+      } catch { return false; }
+    }
+    if (!doRegister()) {
+      document.addEventListener('DOMContentLoaded', doRegister, { once:true });
+    }
+    // Expose for potential reuse
+    window.QuiddlerValidation = window.QuiddlerValidation || {};
+    window.QuiddlerValidation.validateDictWord = validateDictWord;
+  })();
   // Debounce timer so we don't fetch on every keystroke
   let dictDebounceTimer = null;
   const DICT_DEBOUNCE_MS = 350;
+  // Track last value actually processed so filtered (unchanged) keystrokes don't re-trigger lookups
+  let __lastDictInputValue = dictInput ? dictInput.value : '';
+  // Track last looked-up cleaned word to suppress redundant Enter lookups
+  let __lastLookedUpWord = '';
+  // Burst gate to coalesce rapid successive input events (e.g. paste bursts)
+  let dictBurstTimer = null;
+  const DICT_BURST_WINDOW_MS = 30;
 
   async function renderDefinition(word) {
     const localWrap  = document.getElementById('dictLocalWrap');
     const localEl    = document.getElementById('dictLocal');
     const onlineWrap = document.getElementById('dictOnlineWrap');
     const onlineEl   = document.getElementById('dictOnline');
+  const localToggle = document.getElementById('dictLocalToggle');
+  const onlineToggle= document.getElementById('dictOnlineToggle');
     const loadingEl  = document.getElementById('dictOnlineLoading');
     const emptyHint  = document.getElementById('dictEmpty');
     const raw = (word || '').trim();
@@ -186,58 +230,66 @@ function initToolsDrawer(){
     if (!cleaned) {
       // Clear persisted key when user empties input intentionally
       try { if (!raw) localStorage.removeItem(LAST_DICT_WORD_KEY); } catch(_){ }
+  try { localStorage.removeItem(LAST_DICT_API_JSON_KEY); } catch(_){ }
       localWrap?.classList.add('hidden');
       onlineWrap?.classList.add('hidden');
       loadingEl?.classList.add('hidden');
-      if (emptyHint) emptyHint.classList.remove('hidden');
+      // Keep the hint always visible now (no hide/show toggle)
       return;
     }
-    // Persist last successful cleaned lookup
-    try { localStorage.setItem(LAST_DICT_WORD_KEY, cleaned); } catch(_){ }
-    if (emptyHint) emptyHint.classList.add('hidden');
+  // Persist last successful cleaned lookup
+  try { localStorage.setItem(LAST_DICT_WORD_KEY, cleaned); } catch(_){ }
+  __lastLookedUpWord = cleaned;
+    // Hint remains visible even while showing definitions
 
-    // Local dictionary (always show block, with fallback text)
-    const localRaw = getWordDefinitionLocal(cleaned);
+    // Prepare lazy tracking state for this new lookup
+    // (Will be initialized if lazy helpers exist, otherwise no-op)
+    if (window.__dictLazy) {
+      window.__dictLazy.local = { word: cleaned, done: false };
+      window.__dictLazy.online = { word: cleaned, done: false };
+    }
+
+    const isLocalCollapsed  = (window.__dictSectionState?.local === 'collapsed');
+    const isOnlineCollapsed = (window.__dictSectionState?.online === 'collapsed');
+
+    // Local dictionary (lazy if collapsed)
     if (localWrap && localEl) {
-      let localHTML = '<span class="text-gray-500">No definition found</span>';
-      if (localRaw) {
+      localWrap.classList.remove('hidden');
+      if (isLocalCollapsed) {
+        localEl.innerHTML = ''; // defer rendering until expanded
+      } else {
+        window.__fetchLocalDefinition ? window.__fetchLocalDefinition(cleaned) : null;
+      }
+    }
+
+    // Online dictionary (lazy if collapsed)
+    if (onlineWrap && onlineEl) {
+      onlineWrap.classList.remove('hidden');
+      if (isOnlineCollapsed) {
+        onlineEl.innerHTML = '';
+        loadingEl?.classList.add('hidden');
+      } else {
+        // Try cached JSON first (avoids refetch on reload)
+        let usedCache = false;
         try {
-          // Use parser for structured Collins rendering (badges for pos / variants / aka / inflections)
-            const parsed = (typeof parseCollinsEntry === 'function') ? parseCollinsEntry(cleaned) : (window.CollinsParsing?.parseCollinsEntry?.(cleaned));
-            if (parsed && typeof renderParsedCollins === 'function') {
-              localHTML = renderParsedCollins(parsed);
-            } else {
-              localHTML = localRaw; // fallback
+          const rawCache = localStorage.getItem(LAST_DICT_API_JSON_KEY);
+          if (rawCache) {
+            const parsed = JSON.parse(rawCache);
+            if (parsed && parsed.w && parsed.w.toLowerCase() === cleaned.toLowerCase() && parsed.d) {
+              // Render from cache
+              try { renderOnlineDict(cleaned, parsed.d, { senseLimit: 3 }); usedCache = true; } catch(_){}
+              // Mark lazy state done
+              if (window.__dictLazy && window.__dictLazy.online) { window.__dictLazy.online.done = true; window.__dictLazy.online.word = cleaned; }
             }
-        } catch(_) {
-          localHTML = localRaw; // safety fallback on any parsing error
+          }
+        } catch(_){ }
+        if (!usedCache) {
+          window.__fetchOnlineDefinition ? window.__fetchOnlineDefinition(cleaned) : null;
         }
       }
-      localEl.innerHTML = localHTML;
-      localWrap.classList.remove('hidden');
     }
-
-    // Online dictionary
-    onlineWrap?.classList.remove('hidden');
-    if (onlineEl) onlineEl.innerHTML = '';
-    loadingEl?.classList.remove('hidden');
-    try {
-      const { found, error, data } = await getWordDefinitionAPI(cleaned);
-      if (!error && found && data) {
-        renderOnlineDict(word, data, { senseLimit: 3 });
-        // renderOnlineDict will unhide wrapper; ensure visible
-        onlineWrap?.classList.remove('hidden');
-      } else {
-        // Show explicit message instead of hiding
-        if (onlineEl) onlineEl.innerHTML = '<span class="text-gray-500">No definition found</span>';
-        onlineWrap?.classList.remove('hidden');
-      }
-    } catch (e) {
-      if (onlineEl) onlineEl.innerHTML = '<span class="text-gray-500">Lookup unavailable</span>';
-      onlineWrap?.classList.remove('hidden');
-    } finally {
-      loadingEl?.classList.add('hidden');
-    }
+    // Apply current expand/collapse state after new content inserted
+    applyDictSectionStates();
   }
 
   async function doLookup(){ await renderDefinition(dictInput.value); }
@@ -246,17 +298,158 @@ function initToolsDrawer(){
   const dictGo = document.getElementById('dictGo');
   if (dictGo) dictGo.addEventListener('click', doLookup);
 
-  // Auto-lookup with debounce on input changes
+  // --- Collapse / Expand state management ---
+  const DICT_SECTION_STATE_KEY = 'quiddlerDictSectionState';
+  // Load persisted collapse state (fallback to expanded)
+  let persistedState = null;
+  try { persistedState = JSON.parse(localStorage.getItem(DICT_SECTION_STATE_KEY)||'null'); } catch(_){ }
+  const dictSectionState = {
+    local: (persistedState && (persistedState.local==='collapsed'||persistedState.local==='expanded')) ? persistedState.local : 'expanded',
+    online:(persistedState && (persistedState.online==='collapsed'||persistedState.online==='expanded')) ? persistedState.online : 'expanded'
+  }; // session + persisted
+  window.__dictSectionState = dictSectionState; // expose for lazy helpers
+  // Lazy lookup tracking
+  window.__dictLazy = { local:{ word:'', done:false }, online:{ word:'', done:false } };
+
+  // Helper: local definition (synchronous lookup + parse) respecting current requested word
+  window.__fetchLocalDefinition = function(word){
+    const lazy = window.__dictLazy?.local; if (!lazy) return; lazy.word = word; lazy.done = false;
+    const wrap = document.getElementById('dictLocalWrap');
+    const el   = document.getElementById('dictLocal');
+    if (!wrap || !el) return;
+    const raw = getWordDefinitionLocal(word);
+  let html = '<span class="text-gray-500 mt-2 block">No definition found.</span>';
+    if (raw) {
+      try {
+        const parsed = (typeof parseCollinsEntry === 'function') ? parseCollinsEntry(word) : (window.CollinsParsing?.parseCollinsEntry?.(word));
+        if (parsed && typeof renderParsedCollins === 'function') html = renderParsedCollins(parsed); else html = raw;
+      } catch(_) { html = raw; }
+    }
+    // If word changed mid-processing, abort
+    if (lazy.word !== word) return;
+    el.innerHTML = html;
+    wrap.classList.remove('hidden');
+    lazy.done = true;
+  };
+
+  // Helper: online definition (async fetch) respecting current requested word
+  window.__fetchOnlineDefinition = async function(word){
+    const lazy = window.__dictLazy?.online; if (!lazy) return; lazy.word = word; lazy.done=false;
+    const wrap = document.getElementById('dictOnlineWrap');
+    const el   = document.getElementById('dictOnline');
+    const loading = document.getElementById('dictOnlineLoading');
+    if (!wrap || !el || !loading) return;
+    el.innerHTML = '';
+    loading.classList.remove('hidden');
+    wrap.classList.remove('hidden');
+    const requestWord = word;
+    // Abort any prior in-flight fetch (best-effort) if getWordDefinitionAPI supports AbortController
+    if (window.__dictOnlineAbort) { try { window.__dictOnlineAbort.abort(); } catch(_){} }
+    let abortCtrl = null;
+    if (typeof AbortController !== 'undefined') {
+      try { abortCtrl = new AbortController(); } catch(_) { abortCtrl = null; }
+    }
+    window.__dictOnlineAbort = abortCtrl;
+    try {
+      const apiFn = getWordDefinitionAPI;
+      const apiRes = abortCtrl ? await apiFn(word, { signal: abortCtrl.signal }) : await apiFn(word);
+      const { found, error, data } = apiRes || {};
+      if (window.__dictLazy?.online.word !== requestWord) return; // outdated
+      if (!error && found && data) {
+        renderOnlineDict(word, data, { senseLimit: 3 });
+        wrap.classList.remove('hidden');
+          // Cache last successful JSON (structure: { w: word, d: data })
+          try { localStorage.setItem(LAST_DICT_API_JSON_KEY, JSON.stringify({ w: word, d: data })); } catch(_){ }
+      } else {
+  el.innerHTML = '<span class="text-gray-500 mt-2 block">No definition found.</span>';
+      }
+    } catch(err) {
+      const aborted = err && (err.name === 'AbortError');
+      if (aborted) return; // silently ignore
+      if (window.__dictLazy?.online.word === requestWord) {
+        el.innerHTML = '<span class="text-gray-500">Lookup unavailable</span>';
+      }
+        try { localStorage.removeItem(LAST_DICT_API_JSON_KEY); } catch(_){ }
+    } finally {
+      if (window.__dictLazy?.online.word === requestWord) {
+        loading.classList.add('hidden');
+        lazy.done = true;
+      }
+      if (window.__dictOnlineAbort === abortCtrl) window.__dictOnlineAbort = null;
+    }
+  };
+
+  function toggleSection(kind){
+  const wrap   = kind==='local' ? document.getElementById('dictLocalWrap') : document.getElementById('dictOnlineWrap');
+  const bodyEl = kind==='local' ? document.getElementById('dictLocal')    : document.getElementById('dictOnline');
+  const loadingEl = kind==='online' ? document.getElementById('dictOnlineLoading') : null;
+    const btn    = kind==='local' ? document.getElementById('dictLocalToggle') : document.getElementById('dictOnlineToggle');
+    if (!wrap || !bodyEl || !btn) return;
+    const cur = dictSectionState[kind] || 'expanded';
+    const next = cur === 'expanded' ? 'collapsed' : 'expanded';
+    dictSectionState[kind] = next;
+  // Persist
+  try { localStorage.setItem(DICT_SECTION_STATE_KEY, JSON.stringify(dictSectionState)); } catch(_){ }
+    if (next === 'collapsed') {
+      bodyEl.classList.add('hidden');
+      loadingEl?.classList.add('hidden');
+      btn.textContent = 'Expand';
+    } else {
+      bodyEl.classList.remove('hidden');
+      // Only show loading if currently in a lookup state (has hidden class removed separately in renderDefinition)
+      if (kind==='online' && document.getElementById('dictOnline')?.innerHTML.trim()==='') {
+        loadingEl?.classList.remove('hidden');
+      }
+      btn.textContent = 'Collapse';
+      // Perform deferred lookup if needed
+      if (window.__dictLazy && !window.__dictLazy[kind].done && window.__dictLazy[kind].word) {
+        if (kind==='local') window.__fetchLocalDefinition(window.__dictLazy.local.word);
+        else window.__fetchOnlineDefinition(window.__dictLazy.online.word);
+      }
+    }
+  }
+  function applyDictSectionStates(){
+    ['local','online'].forEach(kind => {
+  const bodyEl = kind==='local' ? document.getElementById('dictLocal') : document.getElementById('dictOnline');
+  const btn    = kind==='local' ? document.getElementById('dictLocalToggle') : document.getElementById('dictOnlineToggle');
+  const loadingEl = kind==='online' ? document.getElementById('dictOnlineLoading') : null;
+      if (!bodyEl || !btn) return;
+      const state = dictSectionState[kind] || 'expanded';
+      if (state === 'collapsed') {
+        bodyEl.classList.add('hidden');
+        loadingEl?.classList.add('hidden');
+        btn.textContent = 'Expand';
+      } else {
+        bodyEl.classList.remove('hidden');
+        btn.textContent = 'Collapse';
+      }
+    });
+  }
+  document.getElementById('dictLocalToggle')?.addEventListener('click', ()=>toggleSection('local'));
+  document.getElementById('dictOnlineToggle')?.addEventListener('click', ()=>toggleSection('online'));
+
+  // Auto-lookup with burst + debounce on input changes
   dictInput.addEventListener('input', () => {
-    if (dictDebounceTimer) { clearTimeout(dictDebounceTimer); dictDebounceTimer = null; }
     const val = dictInput.value || '';
+    if (val === __lastDictInputValue) return; // no effective change
+    __lastDictInputValue = val;
+    if (dictDebounceTimer) { clearTimeout(dictDebounceTimer); dictDebounceTimer = null; }
+    if (dictBurstTimer) { clearTimeout(dictBurstTimer); dictBurstTimer = null; }
     if (!val.trim()) { renderDefinition(''); return; }
-    dictDebounceTimer = setTimeout(() => { doLookup(); }, DICT_DEBOUNCE_MS);
+    // Start short burst window; after quiet, start main debounce
+    dictBurstTimer = setTimeout(() => {
+      dictBurstTimer = null;
+      dictDebounceTimer = setTimeout(() => { doLookup(); }, DICT_DEBOUNCE_MS);
+    }, DICT_BURST_WINDOW_MS);
   });
 
   dictInput.addEventListener('keydown', async (e)=>{
     if (e.key === 'Enter') {
+      const val = (dictInput.value || '').trim();
+      const same = val && val.toLowerCase() === (__lastLookedUpWord||'').toLowerCase();
+      if (same && !dictDebounceTimer && !dictBurstTimer) { e.preventDefault(); return; }
       if (dictDebounceTimer) { clearTimeout(dictDebounceTimer); dictDebounceTimer = null; }
+      if (dictBurstTimer) { clearTimeout(dictBurstTimer); dictBurstTimer = null; }
       await doLookup();
     }
     if (e.key === 'Escape') {

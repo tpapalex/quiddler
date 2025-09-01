@@ -247,16 +247,22 @@
           <div id="dictContent" class="space-y-3">
             <!-- Local definition -->
             <div id="dictLocalWrap" class="hidden">
-              <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">Collins ’19</div>
+              <div class="flex items-center justify-between mb-1">
+                <div class="text-xs uppercase tracking-wide text-gray-500">Collins ’19</div>
+                <button id="dictLocalToggle" type="button" class="text-[11px] text-blue-600 hover:underline focus:outline-none">Collapse</button>
+              </div>
               <div id="dictLocal" class="text-sm text-gray-800"></div>
             </div>
             <!-- Online definition -->
             <div id="dictOnlineWrap" class="hidden">
-              <div class="text-xs uppercase tracking-wide text-gray-500 mb-1">Free Dictionary API</div>
+              <div class="flex items-center justify-between mb-1">
+                <div class="text-xs uppercase tracking-wide text-gray-500">Free Dictionary API</div>
+                <button id="dictOnlineToggle" type="button" class="text-[11px] text-blue-600 hover:underline focus:outline-none">Collapse</button>
+              </div>
               <div id="dictOnline" class="text-sm text-gray-800"></div>
             </div>
             <!-- Loading -->
-            <div id="dictOnlineLoading" class="hidden text-xs text-gray-500">Looking up…</div>
+            <div id="dictOnlineLoading" class="hidden mt-2 text-gray-500 text-sm"><span>Looking up…</span></div>
           </div>
 
         </section>
