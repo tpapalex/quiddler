@@ -50,6 +50,18 @@
   /* Word Search subtle error styling */
   .ws-error { border-color:#fda4af !important; background:#fff1f2; box-shadow:0 0 0 1px #fda4af inset; }
   .ws-error:focus { box-shadow:0 0 0 2px #fda4af66; }
+  /* Word Search add/remove circular buttons */
+  .ws-add, .ws-remove { border-radius:9999px; padding:0; line-height:1; }
+  /* Enforce perfect circle even if line-height/border differences */
+  .ws-add, .ws-remove { aspect-ratio:1/1; }
+  /* Narrow type/sort selects with ellipsis */
+  .ws-type, #searchSort { max-width:5.4rem; width:5.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  /* Safari fallback: hide overflowing option text (no true ellipsis inside dropdown list) */
+  .ws-type option, #searchSort option { max-width:5.0rem; overflow:hidden; text-overflow:ellipsis; }
+  /* Hide native select arrow to reclaim space */
+  .ws-type, #searchSort { appearance:none; -webkit-appearance:none; -moz-appearance:none; background-image:none !important; padding-right:0.4rem; }
+  /* Remove legacy IE arrow */
+  select.ws-type::-ms-expand, select#searchSort::-ms-expand { display:none; }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
@@ -328,6 +340,12 @@
               <option value="len-">Length ↓</option>
             </select>
           </div>
+          <div class="mt-2 flex items-center gap-3 justify-end">
+            <button id="searchReset" class="bg-red-500 hover:bg-red-600 active:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-60" type="button">Reset</button>
+            <button id="searchGo" class="bg-blue-500 text-white px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-60" type="button">Search</button>
+            <span id="searchStatus" class="text-sm text-gray-500 hidden"></span>
+          </div>
+          <div id="searchResult" class="mt-2 text-sm hidden"></div>
           <!-- Placeholder area for future Run/results -->
         </section>
       </div>
@@ -592,9 +610,9 @@
           const wrap = document.createElement('div');
           wrap.className='flex items-center gap-2 mb-2';
           wrap.innerHTML = `
-            <button type="button" class="ws-add w-7 h-7 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center text-sm font-semibold" title="Add row" aria-label="Add row">+</button>
-            <button type="button" class="ws-remove w-7 h-7 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center text-sm font-semibold" title="Remove row" aria-label="Remove row">×</button>
-            <input type="text" class="ws-input flex-1 border rounded-lg px-2 py-1 text-sm outline-none focus:ring focus:ring-blue-200" placeholder="" />
+            <button type=\"button\" class=\"ws-add w-5 h-5 flex items-center justify-center rounded-full bg-gray-500 hover:bg-gray-600 active:bg-gray-700 text-white text-xs font-semibold shadow transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400\" title=\"Add row\" aria-label=\"Add row\"><span class=\"relative -top-px text-sm\">+</span></button>
+            <button type=\"button\" class=\"ws-remove w-5 h-5 flex items-center justify-center rounded-full bg-gray-500 hover:bg-gray-600 active:bg-gray-700 text-white text-xs font-semibold shadow transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400\" title=\"Remove row\" aria-label=\"Remove row\"><span class=\"relative -top-px text-sm\">×</span></button>
+            <input type=\"text\" class=\"ws-input flex-1 min-w-0 border rounded-lg px-2 py-1 text-sm outline-none focus:ring focus:ring-blue-200\" placeholder=\"\" />
             <select class="ws-type border rounded-lg px-2 py-1 text-sm">
               <option value="regex">Pattern</option>
               <option value="anagram">Anagram</option>
@@ -635,10 +653,10 @@
           const last = container.lastElementChild; last?.querySelector('.ws-input')?.focus();
         }
         container.addEventListener('click', (e)=>{
-          const target = e.target;
-          if(!(target instanceof HTMLElement)) return;
-          if(target.classList.contains('ws-add')) { handleAdd(target); }
-          else if(target.classList.contains('ws-remove')) { handleRemove(target); }
+          const el = e.target instanceof HTMLElement ? e.target.closest('button') : null;
+          if(!el) return;
+          if(el.classList.contains('ws-add')) { handleAdd(el); }
+          else if(el.classList.contains('ws-remove')) { handleRemove(el); }
         });
         container.addEventListener('change', (e)=>{
           const target = e.target;
@@ -699,6 +717,95 @@
   window.addEventListener('resize', () => { syncSortWidth(); });
         // Periodic revalidation in case external state changes (lightweight)
         setInterval(()=>{ revalidateAll(); }, 4000);
+
+        // --- Search execution wiring (MVP) ---
+        const searchBtn = document.getElementById('searchGo');
+        const resultEl = document.getElementById('searchResult');
+        const statusEl = document.getElementById('searchStatus');
+        function setStatus(msg, { error=false }={}){
+          if(!statusEl) return;
+          if(!msg){ statusEl.classList.add('hidden'); statusEl.textContent=''; return; }
+          statusEl.textContent = msg;
+          statusEl.classList.toggle('text-red-600', error);
+          statusEl.classList.toggle('text-gray-500', !error);
+          statusEl.classList.remove('hidden');
+        }
+        function setResult(msg, { error=false }={}){
+          if(!resultEl) return;
+          if(!msg){ resultEl.classList.add('hidden'); resultEl.textContent=''; return; }
+          resultEl.textContent = msg;
+          resultEl.classList.toggle('text-red-600', error);
+          resultEl.classList.toggle('text-gray-700', !error);
+          resultEl.classList.remove('hidden');
+        }
+        function resetSearch(){
+          // Remove all dynamic rows
+          Array.from(container.children).filter(r=>!r.classList.contains('ws-static')).forEach(r=>r.remove());
+          // Create a fresh row
+          const row = createRow();
+          const sel = row.querySelector('.ws-type');
+          const inp = row.querySelector('.ws-input');
+          if(sel){ sel.value='regex'; }
+          if(inp){ inp.value=''; inp.placeholder = placeholderFor('regex'); clearError(inp); inp.dataset.wsState='clean'; }
+          updateAddButtons();
+          // Clear status/result
+          setStatus(''); setResult('');
+          // Focus input
+          inp?.focus();
+        }
+        function collectSpecs(){
+          const specs=[];
+          const rows = Array.from(container.children).filter(r=>!r.classList.contains('ws-static'));
+          for(const r of rows){
+            const inp = r.querySelector('.ws-input'); const sel=r.querySelector('.ws-type');
+            if(!inp||!sel) continue; const val = inp.value.trim(); if(!val) continue;
+            specs.push({ type: sel.value, pattern: val });
+          }
+          return specs;
+        }
+        function hasInvalid(){
+          const rows = Array.from(container.children).filter(r=>!r.classList.contains('ws-static'));
+            return rows.some(r=>{
+              const inp = r.querySelector('.ws-input');
+              return inp && (inp.classList.contains('ws-error') || inp.dataset.wsState==='invalid');
+            });
+        }
+        function runSearch(){
+          if(!window.WordSearch?.searchMulti){ setResult('Search engine not ready', { error:true }); return; }
+          setStatus('');
+          setResult('Searching...');
+          // Allow UI paint before heavy work
+          setTimeout(()=>{
+            // Force validate all rows first
+            revalidateAll();
+            if(hasInvalid()) { setResult('Invalid pattern(s); please fix highlighted fields.', { error:true }); return; }
+            let specs = collectSpecs();
+            if(!specs.length){
+              // All blank -> broad search using fast any pattern '+' (one or more letters)
+              specs = [{ type:'regex', pattern:'+' }];
+            }
+            const sortMode = (document.getElementById('searchSort')?.value)||null;
+            let res;
+            try { res = window.WordSearch.searchMulti(specs, { sortMode }); }
+            catch(e){ setResult('Search failed: '+(e.message||e), { error:true }); return; }
+            if(!res || res.ok===false){
+              const msg = (res?.errors||[]).map(e=> e.message||e.code).join('; ') || 'Search failed';
+              setResult(msg, { error:true });
+              return;
+            }
+            setResult(res.words.length + ' matches');
+          }, 10);
+        }
+  searchBtn?.addEventListener('click', runSearch);
+  document.getElementById('searchReset')?.addEventListener('click', resetSearch);
+        // Pressing Enter in any search input triggers search
+        container.addEventListener('keydown', (e)=>{
+          if(!(e.target instanceof HTMLElement)) return;
+          if(!e.target.classList.contains('ws-input')) return;
+            if(e.key==='Enter' && !e.metaKey && !e.ctrlKey && !e.altKey){
+              e.preventDefault(); runSearch();
+            }
+        });
       })();
   </script>
 
