@@ -532,7 +532,12 @@
             try { inp._tippy.show(); } catch(_){ }
           }
         }
-        function clearError(inp){ inp.classList.remove('ws-error'); clearTooltip(inp); if(inp.dataset.wsState!=='valid') inp.dataset.wsState='clean'; }
+        function clearError(inp){
+          if(inp._tippy){ try { inp._tippy.hide(); } catch(_){ } }
+            inp.classList.remove('ws-error');
+            clearTooltip(inp);
+            if(inp.dataset.wsState!=='valid') inp.dataset.wsState='clean';
+        }
         function softValidate(row){
           const inp = row.querySelector('.ws-input'); const sel=row.querySelector('.ws-type'); if(!inp||!sel) return;
           const val = inp.value.trim();
