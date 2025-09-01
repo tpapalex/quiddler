@@ -79,7 +79,7 @@ function serializeGameState() {
       roundNum: r.roundNum,
       dealer: r.dealer || null,
       finalized: r.finalized !== false,
-      skipped: !!r.skipped, // NEW persisted skipped flag
+      skipped: !!r.skipped,
       submittedPlayers: Object.keys(r.submittedPlayers || {}),
       players: Object.fromEntries(Object.entries(r.players || {}).map(([p, arr]) => [p, arr.map(w => ({
         text: w.text,
@@ -89,66 +89,60 @@ function serializeGameState() {
       }))]))
     })),
     currentRound,
+    startCards,
+    maxRound,
     currentDealerIdx,
+    dictSource,
     longestWordBonus,
     mostWordsBonus,
     longestWordPoints,
     mostWordsPoints,
     gameOver,
     lastGameCompletedAllRounds,
-    startCards,
-    maxRound,
-    dictSource,
     draftRound: draft
   };
 }
+
+// Persist full in-game state (no-op during auto-load suppression)
 function saveGameState() {
   if (__suppressAutoSave) return;
   try {
     const data = serializeGameState();
-    if (!data) {
-      localStorage.removeItem(Q_STORAGE_KEY);
-      return;
-    }
-    localStorage.setItem(Q_STORAGE_KEY, JSON.stringify(data));
+    if (data) localStorage.setItem(Q_STORAGE_KEY, JSON.stringify(data));
+    else localStorage.removeItem(Q_STORAGE_KEY);
   } catch (e) {
     console.warn('Persist save failed', e);
   }
 }
-// NEW: Serialize current pre-game form values (only when not in an active game)
-function serializePreGameConfig() {
-  if (gameStarted) return null; // only store when on new game page
-  try {
-    const playersRaw = document.getElementById('playersInput')?.value || '';
-    const longestB = !!document.getElementById('longestWordBonus')?.checked;
-    const mostB = !!document.getElementById('mostWordsBonus')?.checked;
-    const longestPts = +(document.getElementById('longestWordPoints')?.value || 0) || 0;
-    const mostPts = +(document.getElementById('mostWordsPoints')?.value || 0) || 0;
-    const sc = +(document.getElementById('startCards')?.value || 3) || 3;
-    const ec = +(document.getElementById('endCards')?.value || 10) || 10;
-    const dictApiAlso = !!document.getElementById('dictApiAlso')?.checked;
-    return {
-      v: 1,
-      playersRaw,
-      longestB,
-      mostB,
-      longestPts,
-      mostPts,
-      sc,
-      ec,
-      dictApiAlso
-    };
-  } catch { return null; }
-}
+
+// --- Pre-game configuration persistence (separate lightweight snapshot) ---
 function savePreGameConfig() {
   if (__suppressPreConfigSave) return;
-  const data = serializePreGameConfig();
   try {
-    if (!data) localStorage.removeItem(Q_PRE_CONFIG_KEY); else localStorage.setItem(Q_PRE_CONFIG_KEY, JSON.stringify(data));
-  } catch {}
+    const p = document.getElementById('playersInput');
+    const longestB = document.getElementById('longestWordBonus');
+    const mostB = document.getElementById('mostWordsBonus');
+    const longestPts = document.getElementById('longestWordPoints');
+    const mostPts = document.getElementById('mostWordsPoints');
+    const sc = document.getElementById('startCards');
+    const ec = document.getElementById('endCards');
+    const api = document.getElementById('dictApiAlso');
+    const snap = {
+      v: 1,
+      playersRaw: p ? p.value : '',
+      longestB: !!longestB?.checked,
+      mostB: !!mostB?.checked,
+      longestPts: longestPts ? longestPts.value : '',
+      mostPts: mostPts ? mostPts.value : '',
+      sc: sc ? sc.value : '',
+      ec: ec ? ec.value : '',
+      dictApiAlso: !!api?.checked
+    };
+    localStorage.setItem(Q_PRE_CONFIG_KEY, JSON.stringify(snap));
+  } catch(e) { /* ignore */ }
 }
+
 function loadPreGameConfig() {
-  if (gameStarted) return; // don't override running game UI
   try {
     const raw = localStorage.getItem(Q_PRE_CONFIG_KEY);
     if (!raw) return;
@@ -156,19 +150,80 @@ function loadPreGameConfig() {
     if (!data || data.v !== 1) return;
     __suppressPreConfigSave = true;
     const p = document.getElementById('playersInput'); if (p && !p.disabled && data.playersRaw != null) {
-      // Normalize any stored list to comma+space style for display
       const norm = data.playersRaw.split(',').map(x=>x.trim()).filter(Boolean).join(', ');
       p.value = norm;
     }
-    const l = document.getElementById('longestWordBonus'); if (l && !l.disabled) l.checked = data.longestB;
-    const m = document.getElementById('mostWordsBonus'); if (m && !m.disabled) m.checked = data.mostB;
-    const lp = document.getElementById('longestWordPoints'); if (lp && !lp.disabled) lp.value = data.longestPts;
-    const mp = document.getElementById('mostWordsPoints'); if (mp && !mp.disabled) mp.value = data.mostPts;
-    const sc = document.getElementById('startCards'); if (sc && !sc.disabled) sc.value = data.sc;
-    const ec = document.getElementById('endCards'); if (ec && !ec.disabled) ec.value = data.ec;
+    const l = document.getElementById('longestWordBonus'); if (l && !l.disabled) l.checked = !!data.longestB;
+    const m = document.getElementById('mostWordsBonus'); if (m && !m.disabled) m.checked = !!data.mostB;
+    const lp = document.getElementById('longestWordPoints'); if (lp && !lp.disabled && data.longestPts != null) lp.value = data.longestPts;
+    const mp = document.getElementById('mostWordsPoints'); if (mp && !mp.disabled && data.mostPts != null) mp.value = data.mostPts;
+    const sc = document.getElementById('startCards'); if (sc && !sc.disabled && data.sc != null) sc.value = data.sc;
+    const ec = document.getElementById('endCards'); if (ec && !ec.disabled && data.ec != null) ec.value = data.ec;
     const api = document.getElementById('dictApiAlso'); if (api && !api.disabled) api.checked = !!data.dictApiAlso;
-    updateBonusInputs(); // reflect enabling/disabling points
-  } catch {} finally { __suppressPreConfigSave = false; }
+    updateBonusInputs();
+  } catch(e) {
+    /* ignore */
+  } finally {
+    __suppressPreConfigSave = false;
+  }
+}
+
+// --- Generic input validation registration for player word inputs ---
+// Register validation for player inputs immediately (dynamic attaches future ones)
+if (typeof window !== 'undefined') {
+  const DIGRAPHS_SET = (typeof DIGRAPHS !== 'undefined') ? DIGRAPHS : new Set();
+  const validatePlayerWords = (text) => {
+    const trimmed = (text||'').trim(); if(!trimmed) return { ok:true };
+    let open=false,start=-1,nested=false; const badPattern=new Set(); const badDigraphs=new Set(); const badChars=new Set();
+    for (let i=0;i<trimmed.length;i++) {
+      const ch = trimmed[i];
+      if (ch==='(') { if (open) nested=true; open=true; start=i; continue; }
+      if (ch===')') { if(!open) return { ok:false, error:'Unmatched parentheses' }; const token=trimmed.slice(start+1,i); if(!/^[a-zA-Z]+$/.test(token)) badPattern.add(token); else { if(token.length===1) badPattern.add(token); else if(token.length===2){ if(!DIGRAPHS_SET.has(token.toLowerCase())) badDigraphs.add(token); } else badPattern.add(token);} open=false; continue; }
+      if(!/[a-zA-Z\s\-()]/.test(ch)) badChars.add(ch);
+    }
+    if (open) return { ok:false, error:'Unmatched parentheses' };
+    if (nested) return { ok:false, error:'Nested parentheses' };
+    if (badPattern.size) return { ok:false, error:'Invalid digraph pattern: '+[...badPattern].map(t=>'('+t+')').join(', ') };
+    if (badDigraphs.size) return { ok:false, error:'Non-existent digraphs: '+[...badDigraphs].map(t=>'('+t+')').join(', ') };
+    if (badChars.size) return { ok:false, error:'Invalid characters: '+[...badChars].join(', ') };
+    return { ok:true };
+  };
+  if (window.InputValidation) {
+    try {
+      window.InputValidation.register({
+        selector: '.player-words',
+        validate: validatePlayerWords,
+        allowed: /[a-zA-Z\s\-()]/g,
+        debounceMs: 700,
+        groupId: 'players',
+        dynamic: true,
+        showTooltipOn: 'hover',
+        autoValidateOnLoad: true,
+        onStateChange: (el, prev, next) => { el.dataset.wsState = next; }
+      });
+      window.InputValidation.validateGroup('players');
+    } catch {}
+  } else {
+    // If module loads after, it can choose to register again (module-level dynamic observation covers future nodes)
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.InputValidation) {
+        try {
+          window.InputValidation.register({
+            selector: '.player-words',
+            validate: validatePlayerWords,
+            allowed: /[a-zA-Z\s\-()]/g,
+            debounceMs: 700,
+            groupId: 'players',
+            dynamic: true,
+            showTooltipOn: 'hover',
+            autoValidateOnLoad: true,
+            onStateChange: (el, prev, next) => { el.dataset.wsState = next; }
+          });
+          window.InputValidation.validateGroup('players');
+        } catch {}
+      }
+    });
+  }
 }
 // Attach listeners to pre-game inputs to auto-save config while editing (only when not in a game)
 function attachPreGameConfigListeners() {
@@ -466,7 +521,7 @@ function setupRound() {
       ${players.map((player, i) => `
         <div class="player-input-row contents">
           <label for="player-words-${i}" class="player-label shrink-0 whitespace-nowrap overflow-hidden text-ellipsis flex items-center rounded-md border border-gray-200/70 bg-white/60 backdrop-blur-sm px-2 py-1 text-gray-800 font-normal shadow-sm ring-1 ring-black/0 hover:bg-white/80 transition-colors">${player}${player === dealer ? `<span class="dealer-indicator ml-1" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
-          <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
+          <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left outline-none" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
         </div>`).join('')}
     </div>`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
@@ -498,6 +553,8 @@ function setupRound() {
       }
     });
   });
+  // Attach validation to newly created inputs
+  // validation already globally registered (dynamic)
   document.querySelectorAll('.submit-player-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       if (!gameOver) submitPlayerPlay();
@@ -527,7 +584,7 @@ function rebuildInputsFromExistingRound(round) {
         return `
         <div class=\"player-input-row contents\">
           <label for=\"player-words-${i}\" class=\"player-label shrink-0 whitespace-nowrap overflow-hidden text-ellipsis flex items-center rounded-md border border-gray-200/70 bg-white/60 backdrop-blur-sm px-2 py-1 text-gray-800 font-normal shadow-sm ring-1 ring-black/0 hover:bg-white/80 transition-colors\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-1.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
-          <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\">
+          <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left outline-none\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\"> 
         </div>`;}).join('')}
     </div>`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
@@ -555,6 +612,8 @@ function rebuildInputsFromExistingRound(round) {
       }
     });
   });
+  // Attach validation after rebuilding inputs
+  // validation already globally registered (dynamic)
   // No per-player submit buttons anymore
   currentRoundDraftInputs = Object.assign({}, currentRoundDraftInputs); // ensure object
   setTimeout(() => {
@@ -577,44 +636,25 @@ function submitPlayerPlay() {
   let round = roundsData.find(r => r.roundNum === currentRound && r.finalized === false);
   if (!round) {
     const roundDealer = players[(currentDealerIdx - 1 + players.length) % players.length];
-    round = { roundNum: currentRound, dealer: roundDealer, players: {}, finalized: false, submittedPlayers: {} };
-    players.forEach(p => round.players[p] = round.players[p] || []);
+    round = {
+      roundNum: currentRound,
+      dealer: roundDealer,
+      finalized: false,
+      skipped: false,
+      submittedPlayers: {},
+      players: Object.fromEntries(players.map(p => [p, []]))
+    };
     roundsData.push(round);
   }
 
-  // Build snapshot of all inputs
-  const inputMap = {};
+  // For each player, parse their current input into word objects (similar logic likely exists elsewhere)
   document.querySelectorAll('.player-words').forEach(inp => {
-    const p = inp.dataset.player;
-    if (!p) return;
-    const text = (inp.value || '').trim();
-    inputMap[p] = text;
-  });
-
-  // Update each player's row; preserve existing row (incl. challenges) if unchanged.
-  players.forEach(p => {
-    const newText = inputMap[p] || '';
-    const words = newText ? newText.split(/\s+/).filter(Boolean) : [];
-    const existingWords = (round.players[p] || []).map(w => w.text).join(' ');
-    if (!words.length) {
-      // Blank submission: treat as NOT submitted; clear row.
-      round.players[p] = [];
-      if (round.submittedPlayers) delete round.submittedPlayers[p];
-      return;
-    }
-    if (existingWords === words.join(' ')) {
-      // Unchanged; keep existing data & keep submitted flag
-      round.submittedPlayers[p] = true;
-      return;
-    }
-    round.players[p] = words.map(word => ({
-      text: word,
-      score: scoreForChit(word),
-      state: word.startsWith('-') ? 'invalid' : 'neutral',
-      challenger: null
-    }));
-    round.submittedPlayers[p] = true; // Only mark submitted if non-blank
-    // Clear draft entry for this player (if any)
+    const p = inp.dataset.player; if (!p) return;
+    const raw = inp.value.trim();
+    if (!raw) return; // blank => not submitted
+    const words = raw.split(/\s+/).filter(Boolean).map(t => ({ text:t, score:0, state:'neutral', challenger:null }));
+    round.players[p] = words;
+    if (words.length) round.submittedPlayers[p] = true; else delete round.submittedPlayers[p];
     if (currentRoundDraftInputs) delete currentRoundDraftInputs[p];
   });
 
@@ -646,6 +686,8 @@ function submitPlayerPlay() {
     if (!round.submittedPlayers[p]) { inp.focus(); inp.select?.(); break; }
   }
 }
+
+// Validation now handled by generic module via attachPlayValidation defined earlier.
 
 // ---------- Helpers ----------
 // A word counts toward base if it's not invalid OR it's invalid with no challenger (definition-only / unchallenged).
@@ -1181,7 +1223,7 @@ function updatePreviousRounds() {
 // Expose selected game APIs under a namespace (keep globals intact for existing calls)
 // + Provide read-only snapshots for introspection and debugging.
 if (typeof window !== 'undefined') {
-  const ns = Object.assign({}, window.QuiddlerGame || {}, {
+  const ns = {
     startGame,
     setupRound,
     validateWordLocal,
@@ -1200,7 +1242,7 @@ if (typeof window !== 'undefined') {
     rebuildInputsFromExistingRound, // NEW export
     getWordDefinitionAPI, // NEW: re-export API lookup helper
     skipRound // NEW export
-  });
+  };
 
   // Read-only getters for state
   Object.defineProperties(ns, {
@@ -1484,6 +1526,13 @@ function attachDraftListeners() {
 // (Simplest: observe DOM mutations after a tick)
 const __observer = new MutationObserver(() => {
   if (document.querySelector('.player-words') && !gameOver) attachDraftListeners();
+  // After restoration and attaching draft listeners, run a one-time hard validation pass so error styling/tooltips are accurate.
+  if (window.QuiddlerGame && typeof window.QuiddlerGame.validatePlayerInputs === 'function') {
+    try { window.QuiddlerGame.validatePlayerInputs(); } catch(_){}
+  } else {
+    // Fallback: defer until validation function is defined (in case script load order delays it)
+    setTimeout(()=>{ try { window.QuiddlerGame?.validatePlayerInputs?.(); } catch(_){ } }, 50);
+  }
 });
 __observer.observe(document.getElementById('scoreInputs') || document.body, { childList:true, subtree:true });
 

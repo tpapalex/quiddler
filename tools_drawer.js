@@ -13,6 +13,7 @@ function initToolsDrawer(){
   let closeFocusTimer = null; // NEW: track pending focus restore
 
   function openDrawer() {
+  try { if (window.tippy && typeof tippy.hideAll === 'function') tippy.hideAll({ duration:0 }); } catch(_){ }
     // Cancel any pending focus restore from a prior close (Escape on shortcut modal etc.)
     if (closeFocusTimer) { clearTimeout(closeFocusTimer); closeFocusTimer = null; }
     // Slide in drawer and fade in backdrop
@@ -38,6 +39,7 @@ function initToolsDrawer(){
     }
   }
   function closeDrawer() {
+  try { if (window.tippy && typeof tippy.hideAll === 'function') tippy.hideAll({ duration:0 }); } catch(_){ }
     // Slide out drawer and fade out backdrop
     drawer.classList.add('translate-x-full');
     backdrop.classList.add('opacity-0');
@@ -329,6 +331,92 @@ function initToolsDrawer(){
   }
   optCommonOnly.addEventListener('change', updateCommonOptions);
   updateCommonOptions();
+
+  // === Validation for solver tiles input ===
+  (function(){
+    if (!tilesInput) return;
+    const DIGRAPHS_SET = (typeof DIGRAPHS !== 'undefined') ? DIGRAPHS : new Set();
+    function validate(text){
+      const raw = text || ''; const trimmed = raw.trim(); if (!trimmed) return { ok:true };
+  let open=false, start=-1, nested=false; const invalidPattern=new Set(); const invalidDigraphs=new Set(); const invalidChars=new Set();
+      for (let i=0;i<trimmed.length;i++) {
+        const ch = trimmed[i];
+        if (ch==='(') { if (open) nested=true; open=true; start=i; continue; }
+        if (ch===')') {
+          if (!open) return { ok:false, error:'Unmatched parentheses' };
+          const token = trimmed.slice(start+1,i);
+          if (!/^[a-zA-Z]+$/.test(token)) invalidPattern.add(token); else {
+            // Treat single-character parentheses as invalid pattern so they surface explicitly in the error list
+            if (token.length===1) invalidPattern.add(token);
+            else if (token.length===2) { if (!DIGRAPHS_SET.has(token.toLowerCase())) invalidDigraphs.add(token); }
+            else invalidPattern.add(token); // >2 letters also invalid pattern
+          }
+          open=false; continue;
+        }
+        if (!/[a-zA-Z\s()\-]/.test(ch)) invalidChars.add(ch);
+      }
+      if (open) return { ok:false, error:'Unmatched parentheses' };
+      if (nested) return { ok:false, error:'Nested parentheses' };
+      if (invalidPattern.size) return { ok:false, error:'Invalid digraph pattern: ' + [...invalidPattern].map(t=>'(' + t + ')').join(', ') };
+      if (invalidDigraphs.size) return { ok:false, error:'Non-existent digraphs: ' + [...invalidDigraphs].map(t=>'(' + t + ')').join(', ') };
+      if (invalidChars.size) return { ok:false, error:'Invalid characters: ' + [...invalidChars].join(', ') };
+      return { ok:true };
+    }
+    function showError(msg){
+      tilesInput.classList.add('ws-error');
+      tilesInput.dataset.wsState='invalid';
+      if (window.tippy) {
+        if (tilesInput._tippy) tilesInput._tippy.setContent(msg); else tippy(tilesInput, { content:msg, animation:'scale', placement:'bottom', theme:'plain', trigger:'mouseenter focus', hideOnClick:true, delay:[120,80] });
+        if (document.activeElement===tilesInput && tilesInput._tippy) { try { tilesInput._tippy.show(); } catch(_){ } }
+      } else tilesInput.title = msg;
+    }
+    function clearError(){ tilesInput.classList.remove('ws-error'); if (tilesInput._tippy){ try { tilesInput._tippy.hide(); } catch(_){ } } tilesInput.dataset.wsState = tilesInput.value.trim()? 'valid':'clean'; }
+    const DEBOUNCE_MS = 700;
+    tilesInput.addEventListener('input', () => {
+      const allowed = /[a-zA-Z\s()\-]/g; // include '-'
+      const caret = tilesInput.selectionStart ?? tilesInput.value.length;
+      const before = tilesInput.value.slice(0, caret);
+      const filteredFull = (tilesInput.value.match(allowed) || []).join('');
+      const filteredBefore = (before.match(allowed) || []).join('');
+      if (filteredFull !== tilesInput.value) {
+        tilesInput.value = filteredFull;
+        const newPos = filteredBefore.length; try { tilesInput.setSelectionRange(newPos,newPos); } catch(_){ }
+      }
+      if (tilesInput._valTimer) clearTimeout(tilesInput._valTimer);
+      const val = tilesInput.value.trim();
+      if (!val) { clearError(); return; }
+      const res = validate(val);
+      if (res.ok) { clearError(); return; }
+      tilesInput.dataset.wsState='editing-invalid';
+      tilesInput._valTimer = setTimeout(()=>{
+        if (!document.contains(tilesInput)) return;
+        const v2 = tilesInput.value.trim(); if (!v2) { clearError(); return; }
+        const r2 = validate(v2); if (r2.ok) { clearError(); return; }
+        showError(r2.error);
+      }, DEBOUNCE_MS);
+    });
+    tilesInput.addEventListener('blur', () => {
+      if (tilesInput._valTimer) { clearTimeout(tilesInput._valTimer); tilesInput._valTimer=null; }
+      const res = validate(tilesInput.value);
+      if (res.ok || !tilesInput.value.trim()) clearError(); else showError(res.error);
+    });
+    tilesInput.addEventListener('focus', () => {
+      if (tilesInput.dataset.wsState==='invalid') {
+        clearError();
+        tilesInput.dataset.wsState='editing-invalid';
+      }
+      if (tilesInput._focusIdleTimer) clearTimeout(tilesInput._focusIdleTimer);
+      const startVal = tilesInput.value;
+      tilesInput._focusIdleTimer = setTimeout(()=>{
+        if (!document.contains(tilesInput)) return;
+        if (tilesInput.dataset.wsState==='editing-invalid' && startVal===tilesInput.value) {
+          const v = tilesInput.value.trim(); if (!v) { clearError(); return; }
+          const r = validate(v); if (!r.ok) showError(r.error); else clearError();
+        }
+      }, DEBOUNCE_MS);
+    });
+    tilesInput.addEventListener('input', ()=>{ if (tilesInput._focusIdleTimer) { clearTimeout(tilesInput._focusIdleTimer); tilesInput._focusIdleTimer=null; } });
+  })();
 
   const fmtZipf = v => Number(v).toFixed(1);
   zipfVal.textContent = fmtZipf(optZipf.value);

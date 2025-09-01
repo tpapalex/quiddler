@@ -49,7 +49,14 @@
       }
   /* Word Search subtle error styling */
   .ws-error { border-color:#fda4af !important; background:#fff1f2; box-shadow:0 0 0 1px #fda4af inset; }
-  .ws-error:focus { box-shadow:0 0 0 2px #fda4af66; }
+  /* On focus show inner red outline + outer soft red ring (fully red-themed) */
+  .ws-error:focus { box-shadow:0 0 0 1px #f87171 inset, 0 0 0 3px #fecaca; }
+  /* Custom focus style for valid (non-error) primary text inputs where Tailwind rings were removed */
+  #tilesInput:focus:not(.ws-error),
+  .player-words:focus:not(.ws-error) {
+    border-color:#93c5fd; /* blue-300 */
+    box-shadow:0 0 0 1px #60a5fa inset, 0 0 0 3px #bfdbfe; /* inner blue-400, outer blue-200 */
+  }
   /* Word Search add/remove circular buttons */
   .ws-add, .ws-remove { border-radius:9999px; padding:0; line-height:1; }
   /* Enforce perfect circle even if line-height/border differences */
@@ -257,8 +264,8 @@
 
           <!-- Tiles input -->
           <div>
-            <input id="tilesInput" type="text" placeholder="e.g. (qu)i ck(er)"
-                   class="w-full border rounded-lg px-3 py-2 outline-none focus:ring focus:ring-blue-200"/>
+       <input id="tilesInput" type="text" placeholder="e.g. (qu)i ck(er)"
+         class="w-full border rounded-lg px-3 py-2 outline-none"/>
           </div>
 
           <!-- New: "Do not discard a card" -->
@@ -377,6 +384,7 @@
     <script src="collins_dictionary.js"></script>
     <script src="collins_parsing.js"></script>
     <script src="common_lemmas.js"></script>
+  <script src="input_validation.js"></script>
 
     <!-- Wink lemmatizer (ESM) -->
     <script type="module">
@@ -400,13 +408,13 @@
 
       // Wire buttons to namespaced APIs (fallback to globals during migration)
       document.getElementById('gameGo')?.addEventListener('click', () => {
-        (window.QuiddlerGame?.startGame || window.startGame)?.();
+        window.QuiddlerGame?.startGame?.();
       });
       document.getElementById('newGameBtn')?.addEventListener('click', () => {
-        (window.QuiddlerGame?.resetToPreGame)?.();
+        window.QuiddlerGame?.resetToPreGame?.();
       });
       document.getElementById('skipRoundBtn')?.addEventListener('click', () => {
-        (window.QuiddlerGame?.skipRound)?.();
+        window.QuiddlerGame?.skipRound?.();
       });
 
       // Cache clearing buttons (shortcut modal)
