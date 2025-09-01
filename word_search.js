@@ -1222,7 +1222,7 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
       if(inner.length!==2){ invalidDigraphPattern.push('('+inner.toLowerCase()+')'); continue; }
       if(!DIG.has(inner.toLowerCase())) badDigraph.push('('+inner.toLowerCase()+')');
     }
-  if(invalidDigraphPattern.length) return { status:'warning', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
+  if(invalidDigraphPattern.length) return { status:'error', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
   if(badDigraph.length) return { status:'warning', message:'Non-existent digraphs: '+badDigraph.join(', ') };
     const stripped=trimmed.replace(/\([^)]+\)/g,'');
     for(const ch of stripped){
@@ -1256,7 +1256,7 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
       if(inner.length!==2){ invalidDigraphPattern.push('('+inner.toLowerCase()+')'); continue; }
       if(!DIG.has(inner.toLowerCase())) badDigraph.push('('+inner.toLowerCase()+')');
     }
-  if(invalidDigraphPattern.length) return { status:'warning', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
+  if(invalidDigraphPattern.length) return { status:'error', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
   if(badDigraph.length) return { status:'warning', message:'Non-existent digraphs: '+badDigraph.join(', ') };
     const stripped=val.replace(/\([^)]+\)/g,'');
     for(const ch of stripped){

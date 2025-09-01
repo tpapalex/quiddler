@@ -186,8 +186,8 @@ if (typeof window !== 'undefined') {
     }
     if (open) return { status:'error', message:'Unmatched parentheses' };
     if (nested) return { status:'error', message:'Nested parentheses' };
-  // Downgraded to warnings per updated rules
-  if (badPattern.size) return { status:'warning', message:'Invalid digraph pattern: '+[...badPattern].map(t=>'('+t+')').join(', ') };
+  // Invalid digraph pattern is now a blocking error (was warning)
+  if (badPattern.size) return { status:'error', message:'Invalid digraph pattern: '+[...badPattern].map(t=>'('+t+')').join(', ') };
   if (badDigraphs.size) return { status:'warning', message:'Non-existent digraphs: '+[...badDigraphs].map(t=>'('+t+')').join(', ') };
     if (badChars.size) return { status:'error', message:'Invalid characters: '+[...badChars].join(', ') };
     // Token-level checks (after structural char scan)
@@ -1079,31 +1079,42 @@ function enterEditMode(player, roundIdx, btn) {
 
   const input = edit.querySelector('.edit-input');
   if (input) {
-    input.focus();
-    const v = input.value; input.value = ''; input.value = v;
-  // Force immediate validation so existing warnings (e.g., digraph issues) surface in edit mode.
-  try { window.InputValidation?.validateElement?.(input); } catch(_){}
+    // Reconstruct original raw row text from current data model (penalties last to match display ordering)
+    try {
+      const r = roundsData[roundIdx];
+      if (r && r.players && Array.isArray(r.players[player])) {
+        const arr = r.players[player];
+        const penalties = arr.filter(w=>w.text.startsWith('-'));
+        const nonPen   = arr.filter(w=>!w.text.startsWith('-'));
+        const raw = [...nonPen, ...penalties].map(w=>w.text).join(' ');
+        input.dataset.originalValue = raw; // stash for cancel
+        input.value = raw; // always reset on entering edit mode (discard prior unsaved draft)
+      }
+    } catch(_){}
+    // Focus & place caret at end
+    try { input.focus(); input.setSelectionRange(input.value.length, input.value.length); } catch(_){ }
+    // Immediate validation so warnings/errors show while editing
+    try { window.InputValidation?.validateElement?.(input); } catch(_){ }
 
     function keyHandler(e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        saveEdit(player, roundIdx, btn);
-        input.removeEventListener('keydown', keyHandler);
-      } else if (e.key === 'Escape') { // NEW: Escape cancels edit
+        const ok = saveEdit(player, roundIdx, btn);
+        if (ok) input.removeEventListener('keydown', keyHandler); // detach only if save succeeded
+      } else if (e.key === 'Escape') { // Escape cancels regardless of validation state
         e.preventDefault();
         e.stopPropagation();
         const cancelBtn = row.querySelector('[data-action="cancel-edit"][data-player="'+player+'"][data-round="'+roundIdx+'"]');
         if (cancelBtn) {
           cancelEdit(cancelBtn);
         } else {
-          // Fallback if cancel button not found (should not happen)
+          // Fallback if cancel button not found
           chits?.classList.remove('hidden');
           edit.classList.add('hidden');
           const viewC = row.querySelector('.controls-view-mode');
           const editC = row.querySelector('.controls-edit-mode');
           editC?.classList.add('hidden');
           viewC?.classList.remove('hidden');
-          // RESTORE validation flag
           row.querySelector('.row-val-flag')?.classList.remove('hidden');
         }
         input.removeEventListener('keydown', keyHandler);
@@ -1152,6 +1163,11 @@ function cancelEdit(btn) {
   }
   // RESTORE validation flag visibility
   row.querySelector('.row-val-flag')?.classList.remove('hidden');
+  // Reset edit input value back to original (discard any un-saved draft)
+  try {
+    const input = row.querySelector('.edit-input');
+    if (input && input.dataset.originalValue != null) input.value = input.dataset.originalValue;
+  } catch(_){ }
 }
 
 /**
@@ -1160,9 +1176,28 @@ function cancelEdit(btn) {
 function saveEdit(player, roundIdx, btn) {
   const row = btn.closest('.group');
   const cell = row.querySelector('.row-chits-cell') || row.querySelector('.flex-1.min-w-0');
-  if (!cell) return;
+  if (!cell) return false;
 
   const input = cell.querySelector('.edit-input');
+  // Immediate synchronous revalidation (bypass debounce) so rapid Enter / click sees up-to-date state
+  try {
+    if (input && window.QuiddlerValidation?.validatePlayerWords) {
+      const res = window.QuiddlerValidation.validatePlayerWords(input.value, input);
+      if (res) {
+        // Mirror InputValidation's dataset convention ("valid" vs ok)
+        if (input.dataset) {
+          input.dataset.wsState = (res.status === 'ok') ? 'valid' : res.status;
+          if (res.message) input.dataset.wsMessage = res.message; else delete input.dataset.wsMessage;
+        }
+      }
+    }
+  } catch(_){ }
+  // Run hard validation and block save if input currently has a blocking error state.
+  try { window.InputValidation?.validateElement?.(input); } catch(_){ }
+  if (input && input.dataset && input.dataset.wsState === 'error') {
+    try { input.focus(); input.select?.(); } catch(_){ }
+    return false; // do not persist invalid edit
+  }
   const consolidatedRaw = consolidatePenaltyChits((input?.value || '').trim());
   const newWords = consolidatedRaw.split(/\s+/).filter(Boolean);
 
@@ -1172,6 +1207,19 @@ function saveEdit(player, roundIdx, btn) {
     state: word.startsWith('-') ? 'invalid' : 'neutral',
     challenger: null
   }));
+
+  // If this edit pertains to the current (unfinalized) round, mirror it into the live round input box
+  try {
+    const editedRound = roundsData[roundIdx];
+    if (editedRound && editedRound.finalized === false && editedRound.roundNum === currentRound) {
+      const liveInput = document.querySelector(`.player-words[data-player="${player}"]`);
+      if (liveInput) {
+        liveInput.value = consolidatedRaw;
+        // Immediate validation so its state/tooltips update without waiting for debounce
+        try { window.InputValidation?.validateElement?.(liveInput); } catch(_){ }
+      }
+    }
+  } catch(_){ }
 
   // If editing an unfinalized round, mark that player as submitted (re)submitted
   const r = roundsData[roundIdx];
@@ -1184,6 +1232,7 @@ function saveEdit(player, roundIdx, btn) {
   updatePreviousRounds();
 
   // After re-render, the edited row is no longer in edit mode; flag will reappear via fresh render if still applicable
+  return true;
 }
 
 /**
@@ -1406,6 +1455,18 @@ function updatePreviousRounds() {
     if (action === 'save-edit') {
       const player = target.getAttribute('data-player');
       const roundIdx = +target.getAttribute('data-round');
+      // Force a synchronous validation pass before attempting save
+      try {
+        const row = target.closest('.group');
+        const input = row?.querySelector('.edit-input');
+        if (input && window.QuiddlerValidation?.validatePlayerWords) {
+          const res = window.QuiddlerValidation.validatePlayerWords(input.value, input);
+          if (res) {
+            input.dataset.wsState = (res.status === 'ok') ? 'valid' : res.status;
+            if (res.message) input.dataset.wsMessage = res.message; else delete input.dataset.wsMessage;
+          }
+        }
+      } catch(_){ }
       saveEdit(player, roundIdx, target);
       return;
     }
