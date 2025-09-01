@@ -526,91 +526,45 @@ function initToolsDrawer(){
   updateCommonOptions();
 
   // === Validation for solver tiles input ===
-  (function(){
+  // Migrated: solver tiles input now uses generic InputValidation framework (same rules as player words)
+  (function registerSolverTilesValidation(){
     if (!tilesInput) return;
-    const DIGRAPHS_SET = (typeof DIGRAPHS !== 'undefined')
-      ? DIGRAPHS
-      : (window.QuiddlerData && window.QuiddlerData.DIGRAPHS) ? window.QuiddlerData.DIGRAPHS : new Set();
-    function validate(text){
-      const raw = text || ''; const trimmed = raw.trim(); if (!trimmed) return { ok:true };
-  let open=false, start=-1, nested=false; const invalidPattern=new Set(); const invalidDigraphs=new Set(); const invalidChars=new Set();
-      for (let i=0;i<trimmed.length;i++) {
-        const ch = trimmed[i];
-        if (ch==='(') { if (open) nested=true; open=true; start=i; continue; }
-        if (ch===')') {
-          if (!open) return { ok:false, error:'Unmatched parentheses' };
-          const token = trimmed.slice(start+1,i);
-          if (!/^[a-zA-Z]+$/.test(token)) invalidPattern.add(token); else {
-            // Treat single-character parentheses as invalid pattern so they surface explicitly in the error list
-            if (token.length===1) invalidPattern.add(token);
-            else if (token.length===2) { if (!DIGRAPHS_SET.has(token.toLowerCase())) invalidDigraphs.add(token); }
-            else invalidPattern.add(token); // >2 letters also invalid pattern
-          }
-          open=false; continue;
-        }
-        if (!/[a-zA-Z\s()\-]/.test(ch)) invalidChars.add(ch);
+    // Reuse core player word validation logic to avoid divergence; add solver-specific rack size warning.
+    function validateSolverRack(text){
+      const baseFn = window.QuiddlerValidation?.validatePlayerWords;
+      const trimmed = (text||'').trim(); if(!trimmed) return { status:'ok' };
+      // Pass suppressSingleDigraphWarning to avoid solver showing that player-only warning
+      let res = baseFn ? baseFn(trimmed, { suppressSingleDigraphWarning:true }) : { status:'ok' }; // no expectedCards context
+      // If base produced an error/warning, keep it unless we want to append rack-size warning (prefer not to stack messages for now)
+      if (res.status === 'ok') {
+        try {
+          const matches = trimmed.match(/\([a-zA-Z]+\)|[a-zA-Z]/g) || [];
+          const cardCount = matches.length; // digraph counts as one (regex matches whole paren group)
+          if (cardCount > 15) res = { status:'warning', message:'Large rack size. Solver may time out' };
+        } catch {}
       }
-      if (open) return { ok:false, error:'Unmatched parentheses' };
-      if (nested) return { ok:false, error:'Nested parentheses' };
-      if (invalidPattern.size) return { ok:false, error:'Invalid digraph pattern: ' + [...invalidPattern].map(t=>'(' + t + ')').join(', ') };
-      if (invalidDigraphs.size) return { ok:false, error:'Non-existent digraphs: ' + [...invalidDigraphs].map(t=>'(' + t + ')').join(', ') };
-      if (invalidChars.size) return { ok:false, error:'Invalid characters: ' + [...invalidChars].join(', ') };
-      return { ok:true };
+      return res || { status:'ok' };
     }
-    function showError(msg){
-      tilesInput.classList.add('ws-error');
-      tilesInput.dataset.wsState='invalid';
-      if (window.tippy) {
-        if (tilesInput._tippy) tilesInput._tippy.setContent(msg); else tippy(tilesInput, { content:msg, animation:'scale', placement:'bottom', theme:'plain', trigger:'mouseenter focus', hideOnClick:true, delay:[120,80] });
-        if (document.activeElement===tilesInput && tilesInput._tippy) { try { tilesInput._tippy.show(); } catch(_){ } }
-      } else tilesInput.title = msg;
+    function doRegister(){
+      if (!window.InputValidation) return false;
+      try {
+        window.InputValidation.register({
+          selector: '#tilesInput',
+          validate: validateSolverRack,
+          allowed: /[a-zA-Z\s\-()]/g,
+          debounceMs: 700,
+          groupId: 'solver',
+          dynamic: false,
+          showTooltipOn: 'hover+focus',
+          autoValidateOnLoad: false,
+          onStateChange: (el, prev, next) => { el.dataset.ivStateSolver = next; }
+        });
+        return true;
+      } catch { return false; }
     }
-    function clearError(){ tilesInput.classList.remove('ws-error'); if (tilesInput._tippy){ try { tilesInput._tippy.hide(); } catch(_){ } } tilesInput.dataset.wsState = tilesInput.value.trim()? 'valid':'clean'; }
-    const DEBOUNCE_MS = 700;
-    tilesInput.addEventListener('input', () => {
-      const allowed = /[a-zA-Z\s()\-]/g; // include '-'
-      const caret = tilesInput.selectionStart ?? tilesInput.value.length;
-      const before = tilesInput.value.slice(0, caret);
-      const filteredFull = (tilesInput.value.match(allowed) || []).join('');
-      const filteredBefore = (before.match(allowed) || []).join('');
-      if (filteredFull !== tilesInput.value) {
-        tilesInput.value = filteredFull;
-        const newPos = filteredBefore.length; try { tilesInput.setSelectionRange(newPos,newPos); } catch(_){ }
-      }
-      if (tilesInput._valTimer) clearTimeout(tilesInput._valTimer);
-      const val = tilesInput.value.trim();
-      if (!val) { clearError(); return; }
-      const res = validate(val);
-      if (res.ok) { clearError(); return; }
-      tilesInput.dataset.wsState='editing-invalid';
-      tilesInput._valTimer = setTimeout(()=>{
-        if (!document.contains(tilesInput)) return;
-        const v2 = tilesInput.value.trim(); if (!v2) { clearError(); return; }
-        const r2 = validate(v2); if (r2.ok) { clearError(); return; }
-        showError(r2.error);
-      }, DEBOUNCE_MS);
-    });
-    tilesInput.addEventListener('blur', () => {
-      if (tilesInput._valTimer) { clearTimeout(tilesInput._valTimer); tilesInput._valTimer=null; }
-      const res = validate(tilesInput.value);
-      if (res.ok || !tilesInput.value.trim()) clearError(); else showError(res.error);
-    });
-    tilesInput.addEventListener('focus', () => {
-      if (tilesInput.dataset.wsState==='invalid') {
-        clearError();
-        tilesInput.dataset.wsState='editing-invalid';
-      }
-      if (tilesInput._focusIdleTimer) clearTimeout(tilesInput._focusIdleTimer);
-      const startVal = tilesInput.value;
-      tilesInput._focusIdleTimer = setTimeout(()=>{
-        if (!document.contains(tilesInput)) return;
-        if (tilesInput.dataset.wsState==='editing-invalid' && startVal===tilesInput.value) {
-          const v = tilesInput.value.trim(); if (!v) { clearError(); return; }
-          const r = validate(v); if (!r.ok) showError(r.error); else clearError();
-        }
-      }, DEBOUNCE_MS);
-    });
-    tilesInput.addEventListener('input', ()=>{ if (tilesInput._focusIdleTimer) { clearTimeout(tilesInput._focusIdleTimer); tilesInput._focusIdleTimer=null; } });
+    if (!doRegister()) document.addEventListener('DOMContentLoaded', doRegister, { once:true });
+    window.QuiddlerValidation = window.QuiddlerValidation || {};
+    window.QuiddlerValidation.validateSolverRack = validateSolverRack;
   })();
 
   const fmtZipf = v => Number(v).toFixed(1);
@@ -651,11 +605,9 @@ function initToolsDrawer(){
   // Yield to the browser so the Solving… text & disabled state can paint before heavy sync work.
   // Using double rAF fallback to ensure a paint even on slower devices.
   await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
-  // (If still insufficient for very large racks, consider chunking solver logic or moving to a Web Worker.)
-
     try {
       // 10s timeout wrapper
-  const TIMEOUT_MS = 5000; // reduced from 10s to 5s
+      const TIMEOUT_MS = 10000; 
       let timedOut = false;
       const result = await Promise.race([
         window.QuiddlerSolver.optimize({ tiles, noDiscard, commonOnly, override2and3, minZipF, currentLongest, currentMost, apiFilter }),
@@ -670,9 +622,9 @@ function initToolsDrawer(){
       }
 
       if (timedOut) {
-        playResult.innerHTML = '<div class="text-sm text-red-600">Solver took too long. Try simplifying options or a smaller rack.</div>';
+        playResult.innerHTML = '<div class="text-sm text-red-600">Solver took too long. Try a smaller rack.</div>';
       } else if (result && result._timedOut) {
-        playResult.innerHTML = '<div class="text-sm text-red-600">Solver took too long. Try simplifying options or a smaller rack.</div>';
+        playResult.innerHTML = '<div class="text-sm text-red-600">Solver took too long. Try a smaller rack.</div>';
       } else if (result && Array.isArray(result.words) && result.words.length > 0) {
         window.QuiddlerRender.renderOptimizedPlayFromResult('playResult', result);
       } else {
@@ -747,8 +699,14 @@ function initToolsDrawer(){
         playResult.innerHTML = '';
         playResult.classList.add('hidden');
       }
-
-      setTimeout(() => tilesInput?.focus(), 0);
+      // Force a revalidation (hard) after value injection so any warnings/errors show immediately.
+      setTimeout(() => {
+        if (tilesInput) {
+          try { window.InputValidation?.validateElement?.(tilesInput); } catch(_){ }
+          tilesInput.focus();
+          try { tilesInput.select(); } catch(_){}
+        }
+      }, 0);
     }
   };
 

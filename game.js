@@ -186,8 +186,9 @@ if (typeof window !== 'undefined') {
     }
     if (open) return { status:'error', message:'Unmatched parentheses' };
     if (nested) return { status:'error', message:'Nested parentheses' };
-    if (badPattern.size) return { status:'error', message:'Invalid digraph pattern: '+[...badPattern].map(t=>'('+t+')').join(', ') };
-    if (badDigraphs.size) return { status:'error', message:'Non-existent digraphs: '+[...badDigraphs].map(t=>'('+t+')').join(', ') };
+  // Downgraded to warnings per updated rules
+  if (badPattern.size) return { status:'warning', message:'Invalid digraph pattern: '+[...badPattern].map(t=>'('+t+')').join(', ') };
+  if (badDigraphs.size) return { status:'warning', message:'Non-existent digraphs: '+[...badDigraphs].map(t=>'('+t+')').join(', ') };
     if (badChars.size) return { status:'error', message:'Invalid characters: '+[...badChars].join(', ') };
     // Token-level checks (after structural char scan)
     const tokens = trimmed.split(/\s+/).filter(Boolean);
@@ -202,6 +203,21 @@ if (typeof window !== 'undefined') {
     }
     if (interiorHyphen) return { status:'error', message:'Hyphen only allowed as leading "-" penalty chit' };
   const warnings = [];
+    // New warning: single digraph word used as entire word (non-penalty) e.g. (qu)
+    try {
+      if (!ctx || !ctx.suppressSingleDigraphWarning) {
+        const singleDigraphs = [];
+        for (const tok of tokens) {
+          if (tok.startsWith('-')) continue; // ignore penalty chits
+          if (/^\([a-zA-Z]{2}\)$/.test(tok)) {
+            const inner = tok.slice(1,-1).toLowerCase();
+            if (DIGRAPHS_SET.has(inner)) singleDigraphs.push(tok);
+          }
+        }
+        if (singleDigraphs.length === 1) warnings.push(`Single digraph word: ${singleDigraphs[0]}`);
+        else if (singleDigraphs.length > 1) warnings.push(`Single digraph words: ${singleDigraphs.join(', ')}`);
+      }
+    } catch {}
     // Warning: card count mismatch with round size (digraph counts as ONE card)
     try {
       if (window.QuiddlerUI && typeof window.QuiddlerUI.tokensForWord === 'function') {
@@ -1065,6 +1081,8 @@ function enterEditMode(player, roundIdx, btn) {
   if (input) {
     input.focus();
     const v = input.value; input.value = ''; input.value = v;
+  // Force immediate validation so existing warnings (e.g., digraph issues) surface in edit mode.
+  try { window.InputValidation?.validateElement?.(input); } catch(_){}
 
     function keyHandler(e) {
       if (e.key === 'Enter') {

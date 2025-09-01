@@ -158,9 +158,9 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedC
   const valHTML = (() => {
     if (!issues.length) return '';
     const htmlPieces = issues.map(issue => {
-      const escaped = escapeHtml(issue);
+      // Escape, then replace newlines with <br/> so multi-line warnings/errors render properly in tooltip
+      const escaped = escapeHtml(issue).replace(/\n/g,'<br/>');
       if (/^Total Cards: /.test(issue)) {
-        // Highlight only the parenthetical mismatch portion (use single quotes to avoid breaking attribute quoting)
         return escaped.replace(/\(≠ [0-9]+\)$/,"<span class='text-gray-500'>$&</span>");
       }
       return escaped;
@@ -342,7 +342,7 @@ function renderOptimizedPlayFromResult(containerId, result) {
   // Breakdown line
   let breakdown = `Base ${baseShown}`;
   if (bLong) breakdown += ` 🦒${bLong}`;
-  if (bMost) breakdown += ` �${bMost}`;
+  if (bMost) breakdown += ` 🥒${bMost}`;
 
   el.innerHTML = `
     <div class="space-y-2 text-center text-sm">

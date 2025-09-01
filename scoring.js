@@ -20,7 +20,11 @@ function parseCards(word) {
 
 // Calculate score for a list of card tokens (now uses normalizeToken for consistency)
 function calculateScore(cards) {
-  return cards.reduce((total, card) => total + (cardScores[normalizeToken(card)] || 1), 0);
+  return cards.reduce((total, card) => {
+    const key = normalizeToken(card);
+    const val = Object.prototype.hasOwnProperty.call(cardScores, key) ? cardScores[key] : 0; // unknown -> 0
+    return total + val;
+  }, 0);
 }
 
 // Utility to convert a token to display form (wrap digraphs in parentheses)
@@ -52,7 +56,10 @@ function scoreForChit(wordText) {
 // Make the letter-points array for a word text (handles digraphs)
 function pointsArrayFor(wordText) {
   const letters = tokensForWord(wordText);
-  return letters.map(l => cardScores[normalizeToken(l)] || 1);
+  return letters.map(l => {
+    const key = normalizeToken(l);
+    return Object.prototype.hasOwnProperty.call(cardScores, key) ? cardScores[key] : 0;
+  });
 }
 
 // NEW: Join a list of tokens into a display word using parentheses for digraphs

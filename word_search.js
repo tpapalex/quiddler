@@ -1222,8 +1222,8 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
       if(inner.length!==2){ invalidDigraphPattern.push('('+inner.toLowerCase()+')'); continue; }
       if(!DIG.has(inner.toLowerCase())) badDigraph.push('('+inner.toLowerCase()+')');
     }
-    if(invalidDigraphPattern.length) return { status:'error', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
-    if(badDigraph.length) return { status:'error', message:'Non-existent digraphs: '+badDigraph.join(', ') };
+  if(invalidDigraphPattern.length) return { status:'warning', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
+  if(badDigraph.length) return { status:'warning', message:'Non-existent digraphs: '+badDigraph.join(', ') };
     const stripped=trimmed.replace(/\([^)]+\)/g,'');
     for(const ch of stripped){
       if(/[a-zA-Z.*+]/.test(ch)) continue;
@@ -1256,8 +1256,8 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
       if(inner.length!==2){ invalidDigraphPattern.push('('+inner.toLowerCase()+')'); continue; }
       if(!DIG.has(inner.toLowerCase())) badDigraph.push('('+inner.toLowerCase()+')');
     }
-    if(invalidDigraphPattern.length) return { status:'error', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
-    if(badDigraph.length) return { status:'error', message:'Non-existent digraphs: '+badDigraph.join(', ') };
+  if(invalidDigraphPattern.length) return { status:'warning', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
+  if(badDigraph.length) return { status:'warning', message:'Non-existent digraphs: '+badDigraph.join(', ') };
     const stripped=val.replace(/\([^)]+\)/g,'');
     for(const ch of stripped){
       if(allowMeta){ if(/[a-zA-Z.*+]/.test(ch)) continue; }
@@ -1268,7 +1268,7 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
     if(invalidChars.size) return { status:'error', message:'Invalid characters: '+[...invalidChars].join(', ') };
     if(warnLargeSub){
       let letters=0; const tokenRe=/\([^)]+\)|[a-zA-Z]/g; let m; while((m=tokenRe.exec(val))!==null){ const tok=m[0]; letters += tok.startsWith('(')? tok.length-2 : 1; }
-      if(letters>15) return { status:'warning', message:'Large rack, solver may time out' };
+      if(letters>15) return { status:'warning', message:'Large rack, search may time out' };
     }
     return { status:'ok' };
   }
