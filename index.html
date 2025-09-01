@@ -723,27 +723,32 @@
           const words = _lastSearchWords;
           const total = words.length;
           if(_needsInitWords){
-            _shownCount = Math.min(10, total); // initial page size now 10
+              _shownCount = Math.min(20, total); // initial page size now 20
             _needsInitWords = false;
           }
           const slice = words.slice(0, _shownCount);
           // Build neutral word objects for renderChit
+          const scoreForChit = window.QuiddlerUI?.scoreForChit;
           const chitHTML = slice.map(w=>{
-            return window.renderChit ? window.renderChit({ text:w, score: w.length, state:'valid' }, { interactive:false, forceState:'neutral', forceShowDefIcon:true, showDefIcon:true, showBreakdown:false, extraClasses:'!m-0' }) : `<span class=\"inline-block px-2 py-0.5 bg-gray-200 rounded text-xs font-semibold\">${w}</span>`;
+            const score = scoreForChit ? scoreForChit(w) : w.length;
+            return window.renderChit
+              ? window.renderChit({ text:w, score, state:'valid' }, { interactive:false, forceState:'neutral', forceShowDefIcon:true, showDefIcon:true, showBreakdown:true, extraClasses:'!m-0' })
+              : `<span class=\"inline-block px-2 py-0.5 bg-gray-200 rounded text-xs font-semibold\">${w.toUpperCase()} [${score}]</span>`;
           }).join('');
           const canMore = _shownCount < total;
-          const canLess = _shownCount > 10; // cannot go below initial 10
+          const canLess = _shownCount > 20; // cannot go below initial 20
           const sortHTML = `<label class=\"inline-flex items-center gap-1 text-xs text-gray-600\">Sort <select id=\"searchSortInline\" class=\"border rounded px-1 py-0.5 text-xs bg-white\"><option value=\"alpha+\" ${searchSortMode==='alpha+'?'selected':''}>A→Z</option><option value=\"alpha-\" ${searchSortMode==='alpha-'?'selected':''}>Z→A</option><option value=\"len+\" ${searchSortMode==='len+'?'selected':''}>Len ↑</option><option value=\"len-\" ${searchSortMode==='len-'?'selected':''}>Len ↓</option></select></label>`;
           const topControlsRow = total>0 ? `<div class=\"text-xs mb-2 text-center flex flex-wrap justify-center items-center gap-3\">${sortHTML}</div>` : '';
-          const bottomControlsRow = total>0 ? `<div class=\"text-xs mt-2 text-center flex flex-wrap justify-center items-center gap-3\"><button type=\"button\" id=\"searchMore\" class=\"text-blue-600 hover:underline ${canMore? '' : 'opacity-40 pointer-events-none'}\">More...</button><button type=\"button\" id=\"searchLess\" class=\"text-blue-600 hover:underline ${canLess? '' : 'opacity-40 pointer-events-none'}\">Less...</button></div>` : '';
+          const bottomControlsRow = total>0 ? `<div class=\"text-xs mt-3 mb-2 text-center flex flex-wrap justify-center items-center gap-3\"><button type=\"button\" id=\"searchMore\" class=\"text-blue-600 hover:underline ${canMore? '' : 'opacity-40 pointer-events-none'}\">More...</button><button type=\"button\" id=\"searchLess\" class=\"text-blue-600 hover:underline ${canLess? '' : 'opacity-40 pointer-events-none'}\">Less...</button></div>` : '';
           resultEl.innerHTML = `
-            <div class=\"text-sm mb-1 text-center\"><span class=\"font-bold\">${total}</span> matches</div>
+            <div class="text-sm mb-1 text-center"><span class="font-bold">${total}</span> matches</div>
             ${topControlsRow}
-            <div id=\"searchResultScroll\" class=\"overflow-y-auto flex-1 min-h-0 pr-1\" data-total=\"${total}\">
-              <div id=\"searchChitsWrap\" class=\"flex flex-col gap-2 items-center\">${chitHTML}</div>
+            <div id="searchResultScroll" class="overflow-y-auto flex-1 min-h-0 pr-1" data-total="${total}">
+              <div id="searchChitsWrap" class="flex flex-col gap-2 items-center">${chitHTML}</div>
+              ${bottomControlsRow}
             </div>
-            ${bottomControlsRow}
           `;
+          // If this was the initial render for a new search, optionally auto-expand until scrollable
           const sortEl = resultEl.querySelector('#searchSortInline');
           sortEl?.addEventListener('change', ()=>{
             searchSortMode = sortEl.value;
@@ -757,6 +762,15 @@
           const lessBtn = resultEl.querySelector('#searchLess');
           moreBtn?.addEventListener('click', ()=>{ if(_shownCount < total){ _shownCount = Math.min(_shownCount + 20, total); setResult(true,{ isWords:true }); } });
           lessBtn?.addEventListener('click', ()=>{ if(_shownCount > 10){ _shownCount = Math.max(10, _shownCount - 20); setResult(true,{ isWords:true }); } });
+          lessBtn?.addEventListener('click', ()=>{ if(_shownCount > 20){ _shownCount = Math.max(20, _shownCount - 20); setResult(true,{ isWords:true }); } });
+          // Wire def icon clicks to dictionary
+          resultEl.querySelectorAll('.def-open').forEach(icon=>{
+            icon.addEventListener('click', async (e)=>{
+              e.preventDefault(); e.stopPropagation();
+              const w = icon.getAttribute('data-word');
+              if(window.QuiddlerTools?.showDict) { try { await window.QuiddlerTools.showDict(w); } catch(_){} }
+            });
+          });
           // Initialize tooltips for def icons if available
           if(window.initChitTooltips){ try { window.initChitTooltips(); } catch(_){} }
         }
@@ -826,7 +840,7 @@
               return;
             }
             _lastSearchWords = sortWords(res.words.slice(), searchSortMode);
-            _shownCount = 0; // will re-init to 10 in setResult via flag
+            _shownCount = 0; // will re-init to 20 in setResult via flag
             _needsInitWords = true;
             setResult(true, { isWords:true });
           }, 10);
