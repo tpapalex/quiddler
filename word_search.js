@@ -945,13 +945,13 @@ function searchMulti(specs, { sortMode } = {}) {
   const executables = norm.filter(s=> s.type !== 'length');
   if (!executables.length) {
     // Only length constraints; return all word indices within bounds
-    const out=[]; for (let L=globalMin; L<=globalMax && L<WORDS_BY_LENGTH.length; L++) { const b=WORDS_BY_LENGTH[L]; if (b) out.push(...b); }
+  const out=[]; for (let L=globalMin; L<=globalMax && L<WORDS_BY_LENGTH.length; L++) { const b=WORDS_BY_LENGTH[L]; if (b) out.push(...b); }
   // out is concatenation of per-length sorted buckets but not globally sorted; sort to preserve contract
   out.sort((a,b)=>a-b);
-  const indices = uniqueSorted(out);
-    let words = getWords(indices);
-    ({ indices, words } = applySearchMultiSorting(indices, words, sortMode));
-    return { ok:true, indices, words, plan:[{ type:'length-only', globalMin, globalMax, produced: indices.length, after: indices.length }], minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
+  let indices = uniqueSorted(out); // use let so we can reassign after sorting step
+  let words = getWords(indices);
+  ({ indices, words } = applySearchMultiSorting(indices, words, sortMode));
+  return { ok:true, indices, words, plan:[{ type:'length-only', globalMin, globalMax, produced: indices.length, after: indices.length }], minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
   }
 
   function rank(s) {
