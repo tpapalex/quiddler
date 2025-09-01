@@ -48,18 +48,21 @@
   #fabButtons[data-collapsed='true'] > button:nth-child(4) { transition-delay:0ms; }
       }
   /* Word Search subtle error styling */
-  .ws-error { border-color:#fda4af !important; background:#fff1f2; box-shadow:0 0 0 1px #fda4af inset; }
+  .ws-error { border-color:#fda4af !important; background:#fff1f2; box-shadow:0 0 0 1px #fda4af inset; outline:none; }
   /* On focus show inner red outline + outer soft red ring (fully red-themed) */
-  .ws-error:focus { box-shadow:0 0 0 1px #f87171 inset, 0 0 0 3px #fecaca; }
+  .ws-error:focus { box-shadow:0 0 0 1px #f87171 inset, 0 0 0 3px #fecaca; outline:none; }
   /* Warning (non-blocking) styling */
   .ws-warn { border-color:#fcd34d !important; background:#fffbeb; box-shadow:0 0 0 1px #fcd34d inset; }
   .ws-warn:focus { box-shadow:0 0 0 1px #fbbf24 inset, 0 0 0 3px #fde68a; }
-  /* Custom focus style for valid (non-error) primary text inputs where Tailwind rings were removed */
-  #tilesInput:focus:not(.ws-error),
-  .player-words:focus:not(.ws-error) {
-    border-color:#93c5fd; /* blue-300 */
-    box-shadow:0 0 0 1px #60a5fa inset, 0 0 0 3px #bfdbfe; /* inner blue-400, outer blue-200 */
-  }
+      /* Generic focus style for any InputValidation-managed input (dataset ivState) when valid */
+      input[data-iv-state]:focus:not(.ws-error):not(.ws-warn) {
+        border-color:#93c5fd; /* blue-300 */
+        box-shadow:0 0 0 1px #60a5fa inset, 0 0 0 3px #bfdbfe; /* inner blue-400, outer blue-200 */
+        outline:none;
+      }
+  /* Generic warning focus style */
+  input.ws-warn:focus { box-shadow:0 0 0 1px #fbbf24 inset, 0 0 0 3px #fde68a; outline:none; }
+  /* Ensure error outline remains consistent (already defined above for .ws-error:focus) */
   /* Word Search add/remove circular buttons */
   .ws-add, .ws-remove { border-radius:9999px; padding:0; line-height:1; }
   /* Enforce perfect circle even if line-height/border differences */

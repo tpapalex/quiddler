@@ -199,10 +199,7 @@ if (typeof window !== 'undefined') {
       }
     }
     if (interiorHyphen) return { status:'error', message:'Hyphen only allowed as leading "-" penalty chit' };
-    // Warning: more than one penalty chit
-    const penaltyCount = tokens.filter(t=>t.startsWith('-') && t.length>1).length;
-    const warnings = [];
-    if (penaltyCount > 1) warnings.push('Multiple penalty chits');
+  const warnings = [];
     // Warning: card count mismatch with round size (digraph counts as ONE card)
     try {
       if (window.QuiddlerUI && typeof window.QuiddlerUI.tokensForWord === 'function') {
@@ -258,6 +255,99 @@ if (typeof window !== 'undefined') {
           });
           window.InputValidation.validateGroup('players');
         } catch {}
+      }
+    });
+  }
+}
+// --- Pre-game player names validation (migrated to generic input_validation framework) ---
+if (typeof window !== 'undefined') {
+  // Helper: normalize a single player name token (does not validate punctuation sequences)
+  function normalizePlayerName(raw) {
+    if (!raw) return '';
+    let name = raw.replace(/\s+/g, ' ').trim(); // collapse spaces
+    // Strip leading/trailing hyphen/apostrophe/space
+    name = name.replace(/^[\-'\s]+|[\-'\s]+$/g, '');
+    if (!name) return '';
+    // Lowercase everything then capitalize first letter of each run after start or separator (space, hyphen, apostrophe).
+    // This keeps single-letter tokens (e.g., initials) uppercase: "Ted P" -> "Ted P".
+    name = name.toLowerCase().replace(/(^|[\s\-'])([a-z])/g, (m, p1, p2) => p1 + p2.toUpperCase());
+    return name;
+  }
+  function validatePlayersRaw(value) {
+    const raw = value || '';
+    if (!raw.trim()) return { status: 'ok' }; // pristine / user hasn't typed anything meaningful yet
+    const tokens = raw.split(',').map(t => t.trim()).filter(t => t.length > 0);
+    if (!tokens.length) return { status: 'ok' }; // treat only separators as still pristine
+    const accum = {
+      invalidPunct: [],
+      empty: 0,
+      invalidChars: [],
+      tooLong: [],
+      long: [],
+      duplicate: []
+    };
+    const seen = new Set();
+    for (const tok of tokens) {
+      if (/--|''|'-|-'/.test(tok)) { accum.invalidPunct.push(tok); continue; }
+      const norm = normalizePlayerName(tok);
+      if (!norm) { accum.empty++; continue; }
+      if (!/^[A-Za-z][A-Za-z '\-]*$/.test(norm)) { accum.invalidChars.push(norm); continue; }
+  if (norm.length > 24) accum.tooLong.push(norm); else if (norm.length > 15) accum.long.push(norm);
+      const key = norm.toLowerCase();
+      if (seen.has(key)) accum.duplicate.push(norm); else seen.add(key);
+    }
+    const errorLines = [];
+    if (accum.invalidPunct.length) errorLines.push(`Invalid punctuation: ${accum.invalidPunct.join(', ')}`);
+    if (accum.empty) errorLines.push(accum.empty === 1 ? 'Empty name' : `Empty name entries: ${accum.empty}`);
+    if (accum.invalidChars.length) errorLines.push(`Invalid characters in: ${accum.invalidChars.join(', ')}`);
+    if (accum.tooLong.length) errorLines.push(`Name too long (>24): ${accum.tooLong.join(', ')}`);
+    if (accum.duplicate.length) errorLines.push(`Duplicate name: ${accum.duplicate.join(', ')}`);
+    const warningLines = [];
+    if (accum.long.length) warningLines.push(`Long name: ${accum.long.join(', ')}`);
+    if (errorLines.length) return { status: 'error', message: errorLines.join('\n') };
+    if (warningLines.length) return { status: 'warning', message: warningLines.join('\n') };
+    return { status: 'ok' };
+  }
+  window.QuiddlerValidation = window.QuiddlerValidation || {};
+  window.QuiddlerValidation.normalizePlayerName = normalizePlayerName;
+  window.QuiddlerValidation.validatePlayerNames = validatePlayersRaw;
+  if (window.InputValidation) {
+    try {
+      window.InputValidation.register({
+        selector: '#playersInput',
+        validate: validatePlayersRaw,
+        allowed: /[A-Za-z,'\- ]/g,
+        debounceMs: 500,
+        groupId: 'pregame',
+        dynamic: false,
+        showTooltipOn: 'hover+focus',
+        autoValidateOnLoad: true,
+        onStateChange: (el, prev, next) => { el.dataset.ivStatePlayers = next; }
+      });
+      // Remove any Tailwind focus ring utility classes accidentally applied that would cause blue halo stacking
+      const el = document.getElementById('playersInput');
+      if (el) {
+        el.classList.forEach(cls => { if (/^focus:/.test(cls) && cls.includes('ring')) el.classList.remove(cls); });
+      }
+    } catch(_){}
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.InputValidation) {
+        try {
+          window.InputValidation.register({
+            selector: '#playersInput',
+            validate: validatePlayersRaw,
+            allowed: /[A-Za-z,'\- ]/g,
+            debounceMs: 500,
+            groupId: 'pregame',
+            dynamic: false,
+            showTooltipOn: 'hover+focus',
+            autoValidateOnLoad: true,
+            onStateChange: (el, prev, next) => { el.dataset.ivStatePlayers = next; }
+          });
+          const el = document.getElementById('playersInput');
+          if (el) { el.classList.forEach(cls => { if (/^focus:/.test(cls) && cls.includes('ring')) el.classList.remove(cls); }); }
+        } catch(_){}
       }
     });
   }
@@ -438,12 +528,24 @@ function validateWordLocal(raw) {
  */
 function startGame() {
   if (gameStarted) return; // prevent duplicate init
+  // Ensure player names validation passes (hard check) before proceeding
+  try {
+    if (window.InputValidation) {
+      window.InputValidation.validateGroup('pregame');
+      if (window.InputValidation.anyBlockingInvalid('pregame')) {
+        const el = document.getElementById('playersInput');
+        if (el) { el.focus(); el.select?.(); }
+        return; // block start due to invalid player names
+      }
+    }
+  } catch(_){}
   // Parse and clean players list
-  players = document.getElementById('playersInput').value
-    .split(',')
+  const rawPlayers = document.getElementById('playersInput').value;
+  players = rawPlayers.split(',')
     .map(p => p.trim())
     .filter(p => p.length > 0)
-    .map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase());
+    .map(p => (window.QuiddlerValidation?.normalizePlayerName ? window.QuiddlerValidation.normalizePlayerName(p) : (p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())))
+    .filter((p, idx, arr) => p && arr.indexOf(p) === idx);
 
   // Normalize players input display to include a space after commas
   const pInputNorm = document.getElementById('playersInput');
@@ -453,6 +555,9 @@ function startGame() {
     alert('Please enter at least one player');
     return;
   }
+  // Secondary duplicate check (defensive)
+  const dup = players.find((p,i)=> players.indexOf(p)!==i);
+  if (dup) { alert('Duplicate player name: '+dup); return; }
 
   // Read configurable card range first (validate before committing to game start)
   const rawStart = +(document.getElementById('startCards')?.value || 3);
