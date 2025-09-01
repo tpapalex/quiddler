@@ -177,8 +177,8 @@ function renderPlayerRow(roundIdx, player, pdata, {interactive = true, expectedC
   const editBlock = interactive ? `
     <div class="edit-container hidden w-full">
       <div class="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full">
-        <input type="text" class="border rounded px-2 py-1 flex-auto min-w-0 w-full sm:w-auto text-left edit-input"
-               value="${pdata.map(w=>w.text).join(' ')}">
+  <input type="text" class="border rounded px-2 py-1 flex-auto min-w-0 w-full sm:w-auto text-left edit-input" data-expected-cards="${round.roundNum}"
+         value="${pdata.map(w=>w.text).join(' ')}">
       </div>
     </div>
   ` : '';

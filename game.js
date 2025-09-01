@@ -172,7 +172,7 @@ function loadPreGameConfig() {
 // Register validation for player inputs immediately (dynamic attaches future ones)
 if (typeof window !== 'undefined') {
   const DIGRAPHS_SET = (typeof DIGRAPHS !== 'undefined') ? DIGRAPHS : new Set();
-  const validatePlayerWords = (text, opts = {}) => {
+  const validatePlayerWords = (text, ctx) => {
     const trimmed = (text||'').trim(); if(!trimmed) return { status:'ok' };
     let open=false,start=-1,nested=false; const badPattern=new Set(); const badDigraphs=new Set(); const badChars=new Set();
     let interiorHyphen = false;
@@ -210,7 +210,14 @@ if (typeof window !== 'undefined') {
             const cards = window.QuiddlerUI.parseCards ? window.QuiddlerUI.parseCards(base) : (base.match(/\([a-z]+\)|[a-z]/gi) || []);
             totalCards += cards.length;
         }
-        const expected = (opts && Number.isFinite(opts.expectedCards)) ? opts.expectedCards : currentRound;
+        let expected;
+        if (ctx) {
+          if (ctx.dataset && ctx.dataset.expectedCards) {
+            const n = +ctx.dataset.expectedCards; if (Number.isFinite(n)) expected = n;
+          } else if (Number.isFinite(ctx.expectedCards)) {
+            expected = ctx.expectedCards;
+          }
+        }
         if (Number.isFinite(expected) && totalCards && totalCards !== expected) {
           warnings.push(`Uses ${totalCards} cards; round is ${expected}`);
         }
@@ -226,13 +233,25 @@ if (typeof window !== 'undefined') {
     try {
       window.InputValidation.register({
         selector: '.player-words',
-        validate: validatePlayerWords,
+        validate: (value, el) => validatePlayerWords(value, el),
         allowed: /[a-zA-Z\s\-()]/g,
         debounceMs: 700,
         groupId: 'players',
         dynamic: true,
         showTooltipOn: 'hover',
         autoValidateOnLoad: true,
+        onStateChange: (el, prev, next) => { el.dataset.wsState = next; }
+      });
+      // Inline edit mode inputs (class .edit-input) use identical validation rules
+      window.InputValidation.register({
+        selector: '.edit-input',
+        validate: (value, el) => validatePlayerWords(value, el),
+        allowed: /[a-zA-Z\s\-()]/g,
+        debounceMs: 700,
+        groupId: 'players',
+        dynamic: true,
+        showTooltipOn: 'hover',
+        autoValidateOnLoad: false,
         onStateChange: (el, prev, next) => { el.dataset.wsState = next; }
       });
       window.InputValidation.validateGroup('players');
@@ -244,13 +263,24 @@ if (typeof window !== 'undefined') {
         try {
           window.InputValidation.register({
             selector: '.player-words',
-            validate: validatePlayerWords,
+            validate: (value, el) => validatePlayerWords(value, el),
             allowed: /[a-zA-Z\s\-()]/g,
             debounceMs: 700,
             groupId: 'players',
             dynamic: true,
             showTooltipOn: 'hover',
             autoValidateOnLoad: true,
+            onStateChange: (el, prev, next) => { el.dataset.wsState = next; }
+          });
+          window.InputValidation.register({
+            selector: '.edit-input',
+            validate: (value, el) => validatePlayerWords(value, el),
+            allowed: /[a-zA-Z\s\-()]/g,
+            debounceMs: 700,
+            groupId: 'players',
+            dynamic: true,
+            showTooltipOn: 'hover',
+            autoValidateOnLoad: false,
             onStateChange: (el, prev, next) => { el.dataset.wsState = next; }
           });
           window.InputValidation.validateGroup('players');
@@ -663,7 +693,7 @@ function setupRound() {
       ${players.map((player, i) => `
         <div class="player-input-row contents">
           <label for="player-words-${i}" class="player-label shrink-0 whitespace-nowrap overflow-hidden text-ellipsis flex items-center rounded-md border border-gray-200/70 bg-white/60 backdrop-blur-sm px-2 py-1 text-gray-800 font-normal shadow-sm ring-1 ring-black/0 hover:bg-white/80 transition-colors">${player}${player === dealer ? `<span class="dealer-indicator ml-1" aria-label="${player} deals round ${currentRound}" data-tippy-content="${player} deals round ${currentRound}">${DEALER_EMOJI}</span>` : ''}</label>
-          <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left outline-none" data-player="${player}" placeholder="e.g., (qu)ick(er) bad -e(th)">
+          <input id="player-words-${i}" class="player-words flex-1 min-w-0 w-full p-2 border rounded text-left outline-none" data-player="${player}" data-expected-cards="${currentRound}" placeholder="e.g., (qu)ick(er) bad -e(th)">
         </div>`).join('')}
     </div>`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
@@ -726,7 +756,7 @@ function rebuildInputsFromExistingRound(round) {
         return `
         <div class=\"player-input-row contents\">
           <label for=\"player-words-${i}\" class=\"player-label shrink-0 whitespace-nowrap overflow-hidden text-ellipsis flex items-center rounded-md border border-gray-200/70 bg-white/60 backdrop-blur-sm px-2 py-1 text-gray-800 font-normal shadow-sm ring-1 ring-black/0 hover:bg-white/80 transition-colors\">${player}${player === dealer ? `<span class=\"dealer-indicator ml-1.5\" aria-label=\"${player} deals round ${currentRound}\" data-tippy-content=\"${player} deals round ${currentRound}\">${DEALER_EMOJI}</span>` : ''}</label>
-          <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left outline-none\" data-player=\"${player}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\"> 
+          <input id=\"player-words-${i}\" class=\"player-words flex-1 min-w-0 w-full p-2 border rounded text-left outline-none\" data-player=\"${player}\" data-expected-cards=\"${round.roundNum}\" value=\"${existing.replace(/"/g,'&quot;')}\" placeholder=\"e.g., (qu)ick(er) bad -e(th)\"> 
         </div>`;}).join('')}
     </div>`;
   document.getElementById('scoreInputs')?.classList.remove('hidden');
@@ -1763,9 +1793,11 @@ function skipRound() {
 function consolidatePenaltyChits(raw) {
   if (!raw) return raw;
   const tokens = raw.split(/\s+/).filter(Boolean);
-  const penalties = tokens.filter(t=>t.startsWith('-'));
+  // Collect penalty chits (tokens starting with '-') but ignore standalone '-'
+  const penalties = tokens.filter(t=>t.startsWith('-') && t.length>1);
   const others = tokens.filter(t=>!t.startsWith('-'));
-  if (!penalties.length) return raw;
+  // If there are no multi-letter penalty chits and only standalone '-' tokens, drop them entirely
+  if (!penalties.length) return others.join(' ');
   // Always consolidate into a single penalty chit and move it to the end for consistent rendering
   const combined = '-' + penalties.map(t=>t.replace(/^-/, '')).join('');
   return [...others, combined].join(' ');

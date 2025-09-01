@@ -99,17 +99,17 @@
   }
   function softValidate(el, meta){
     const val = el.value.trim(); if (!val){ clearIssue(el, meta); return; }
-    const res = normalizeResult(safeValidate(meta.validate, val));
+    const res = normalizeResult(safeValidate(meta.validate, val, el));
     if (res.status === 'ok') clearIssue(el, meta); else showIssue(el, meta, res);
   }
   function hardValidate(el, meta){
     const val = el.value.trim(); if (!val){ clearIssue(el, meta); return true; }
-    const res = normalizeResult(safeValidate(meta.validate, val));
+    const res = normalizeResult(safeValidate(meta.validate, val, el));
     if (res.status === 'ok') { clearIssue(el, meta); return true; }
     showIssue(el, meta, res); return res.status !== 'error'; // return true if not blocking
   }
-  function safeValidate(fn, val){
-    try { return fn(val); } catch(e){ return { status:'error', message: e && e.message || 'Invalid' }; }
+  function safeValidate(fn, val, el){
+    try { return fn(val, el); } catch(e){ return { status:'error', message: e && e.message || 'Invalid' }; }
   }
   function normalizeResult(r){
     if (!r) return { status:'ok' };
