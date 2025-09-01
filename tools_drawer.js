@@ -153,6 +153,9 @@ function initToolsDrawer(){
     }
     if (which === 'search') {
       try { window.WordSearch?.init?.(); } catch(_){ }
+  // Sync sort dropdown width now that panel is visible
+  setTimeout(()=>{ window.syncSearchSortWidth?.(); }, 0);
+  requestAnimationFrame(()=>{ window.syncSearchSortWidth?.(); });
     }
   }
   tabDict?.addEventListener('click', () => showTab('dict'));

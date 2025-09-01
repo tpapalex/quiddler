@@ -317,6 +317,17 @@
         <section id="toolsPanelSearch" class="hidden">
           <div class="text-sm text-gray-500 mb-3">Add rows with +. Remove with ×. Last row cannot be removed (input is cleared instead).</div>
           <div id="searchRows" class="mb-2"></div>
+          <div id="searchSortRow" class="flex items-center gap-2 mb-2 ws-static">
+            <div class="w-7 h-7"></div>
+            <div class="w-7 h-7"></div>
+            <div class="flex-1 text-right pr-1 text-sm text-gray-600 select-none">Sort</div>
+            <select id="searchSort" class="ws-type border rounded-lg px-2 py-1 text-sm">
+              <option value="alpha+" selected>A→Z</option>
+              <option value="alpha-">Z→A</option>
+              <option value="len+">Length ↑</option>
+              <option value="len-">Length ↓</option>
+            </select>
+          </div>
           <!-- Placeholder area for future Run/results -->
         </section>
       </div>
@@ -492,6 +503,16 @@
       (function(){
         const container = document.getElementById('searchRows');
         if(!container) return;
+        const sortSelect = document.getElementById('searchSort');
+  function syncSortWidth(){
+          const ref = container.querySelector('.ws-type');
+          if(ref && sortSelect){
+            // Lock sort select width to match first dynamic selector
+            const w = ref.getBoundingClientRect().width;
+            if(w>0) sortSelect.style.width = w + 'px';
+          }
+        }
+  try { window.syncSearchSortWidth = syncSortWidth; } catch(_){ }
         const hasTippy = () => !!window.tippy;
         function attachTooltip(el, content){
           if(!hasTippy()) return;
@@ -559,9 +580,9 @@
           if(res.ok || !val){ clearError(inp); inp.dataset.wsState = val? 'valid':'clean'; }
           else { showError(inp,res); }
         }
-        function revalidateAll(){ Array.from(container.children).forEach(r=>forceValidate(r)); }
+  function revalidateAll(){ Array.from(container.children).filter(r=>!r.classList.contains('ws-static')).forEach(r=>forceValidate(r)); }
         function updateAddButtons(){
-          const rows = Array.from(container.children);
+          const rows = Array.from(container.children).filter(r=>!r.classList.contains('ws-static'));
           rows.forEach((r,i)=>{
             const add = r.querySelector('.ws-add');
             if(add) add.classList.toggle('invisible', i !== rows.length - 1);
@@ -595,14 +616,16 @@
           }
           sel.addEventListener('change', () => { forceValidate(wrap); });
           updateAddButtons();
+          syncSortWidth();
           return wrap;
         }
-        function ensureAtLeastOne(){ if(container.children.length===0) { createRow(); } updateAddButtons(); }
+  function ensureAtLeastOne(){ const dyn = Array.from(container.children).filter(r=>!r.classList.contains('ws-static')); if(dyn.length===0) { createRow(); } updateAddButtons(); }
         function handleAdd(btn){ const row = createRow(); const inp=row.querySelector('.ws-input'); inp?.focus(); }
         function handleRemove(btn){
           const row = btn.closest('div');
           if(!row) return;
-          if(container.children.length===1){
+          const dynRows = Array.from(container.children).filter(r=>!r.classList.contains('ws-static'));
+          if(dynRows.length===1){
             const inp = row.querySelector('.ws-input'); if(inp) inp.value='';
             inp?.focus();
             return;
@@ -670,7 +693,10 @@
           const t = e.target; if(!(t instanceof HTMLInputElement) || !t.classList.contains('ws-input')) return;
           t.dataset.wsHover='0';
         }, true);
-        ensureAtLeastOne();
+  ensureAtLeastOne();
+  // Initial sync and on resize
+  syncSortWidth();
+  window.addEventListener('resize', () => { syncSortWidth(); });
         // Periodic revalidation in case external state changes (lightweight)
         setInterval(()=>{ revalidateAll(); }, 4000);
       })();
