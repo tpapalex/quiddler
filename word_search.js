@@ -664,6 +664,7 @@ function normalizePostValidation(kind, input){
 //   >n        min length n+1
 //   n+        shorthand for >=n
 //   -n        shorthand for <=n
+//   -         ANY length (no constraint)  [NEW]
 // Additional accepted forms:
 //   m-        shorthand for >=m  (e.g. "5-" => >=5)
 // Returns { ok:true, minLen, maxLen, source, normalized } or { ok:false, errors:[...] }
@@ -690,6 +691,10 @@ function parseLengthPattern(pattern) {
   }
 
   // Exact n
+  // Standalone '-' means any length (no constraint)
+  if (p === '-') {
+    minLen = 0; maxLen = Infinity; return finish();
+  }
   if (/^\d+$/.test(p)) {
     const n = num(p); if (n == null) return { ok:false, errors };
     minLen = maxLen = n; return finish();
@@ -1194,6 +1199,7 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
     const p=val.replace(/\s+/g,'');
     const errors=[]; const num=n=> /^\d+$/.test(n)? parseInt(n,10):(errors.push('Invalid number: '+n), null);
     let minLen=0, maxLen=Infinity; const finish=()=>{ if(minLen<0||maxLen<0) errors.push('Negative length not allowed'); if(minLen>maxLen) errors.push('Min length exceeds max length'); return errors; };
+  if(p==='-'){ const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
     if(/^\d+$/.test(p)){ const n=num(p); if(n!=null){ minLen=maxLen=n; } const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
     if(/^(\d+)-(\d+)$/.test(p)){ const [,a,b]=p.match(/^(\d+)-(\d+)$/); const n1=num(a), n2=num(b); if(n1!=null&&n2!=null){ minLen=n1; maxLen=n2; } const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
     if(/^(\d+)-$/.test(p)){ const [,a]=p.match(/^(\d+)-$/); const n=num(a); if(n!=null) minLen=n; const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
