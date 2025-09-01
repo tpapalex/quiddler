@@ -732,15 +732,13 @@ function parseLengthPattern(pattern) {
 function validateLengthPattern(pattern) { return parseLengthPattern(pattern); }
 
 // ------------------ Multi-search (intersection) ------------------
-// specs: array of { type: 'regex'|'anagram'|'subanagram'|'length', pattern: string, options? }
-// options: { returnWords=false, debug=false }
-// Returns { ok:true, indices:[...], words?[], plan:[...], minLen, maxLen } or { ok:false, errors:[...] }
+// specs: array of { type: 'regex'|'anagram'|'subanagram'|'length', pattern: string }
+// Returns { ok:true, indices:[...], words:[], plan:[...], minLen, maxLen } or { ok:false, errors:[...] }
 
 // Caches
 const __regexParseCache = new Map();    // pattern -> parsed regex object
 const __anagramCache    = new Map();    // pattern -> indices array
 const __subanaCache     = new Map();    // pattern -> indices array (default minLen=0,max=Inf, allowSingleDigraph true)
-const __lengthCache     = new Map();    // pattern -> { ok, minLen, maxLen }
 
 function intersectSorted(a, b) {
   if (!a || !a.length) return [];
@@ -930,15 +928,16 @@ function searchMulti(specs, { sortMode } = {}) {
     norm.push({ type, pattern: String(pattern), normalized: valRes.normalized, inherentMin, inherentMax, meta, options: s.options || {} });
   }
   if (errors.length) return { ok:false, errors };
-  if (globalMin > globalMax) return { ok:true, indices:[], plan:[{ reason:'length-contradiction', globalMin, globalMax }], minLen:globalMin, maxLen:globalMax };
+  // Early unsatisfiable length bounds. Ensure consistent shape (include words:[]).
+  if (globalMin > globalMax) return { ok:true, indices:[], words:[], plan:[{ reason:'length-contradiction', globalMin, globalMax }], minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
 
   // Early contradictions
-  if (anagramSignatures.size > 1) return { ok:true, indices:[], plan:[{ reason:'anagram-signature-mismatch' }], minLen:globalMin, maxLen:globalMax };
-  if (literalRegexWords.size > 1) return { ok:true, indices:[], plan:[{ reason:'literal-mismatch' }], minLen:globalMin, maxLen:globalMax };
+  if (anagramSignatures.size > 1) return { ok:true, indices:[], words:[], plan:[{ reason:'anagram-signature-mismatch' }], minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
+  if (literalRegexWords.size > 1) return { ok:true, indices:[], words:[], plan:[{ reason:'literal-mismatch' }], minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
   // If both literal regex word and anagram signature present, ensure match
   if (literalRegexWords.size===1 && anagramSignatures.size===1) {
     const lit=[...literalRegexWords][0]; const sig=[...anagramSignatures][0];
-    if (lit.split('').sort().join('') !== sig) return { ok:true, indices:[], plan:[{ reason:'literal-vs-anagram-mismatch' }], minLen:globalMin, maxLen:globalMax };
+  if (lit.split('').sort().join('') !== sig) return { ok:true, indices:[], words:[], plan:[{ reason:'literal-vs-anagram-mismatch' }], minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
   }
 
   // Derive execution list (exclude pure length specs)

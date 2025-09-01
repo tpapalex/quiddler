@@ -759,7 +759,7 @@
               ${bottomControlsRow}
             </div>
           `;
-          // If this was the initial render for a new search, optionally auto-expand until scrollable
+          // (initial render pagination handled via _shownCount)
           const sortEl = resultEl.querySelector('#searchSortInline');
           sortEl?.addEventListener('change', ()=>{
             searchSortMode = sortEl.value;
