@@ -528,7 +528,9 @@ function initToolsDrawer(){
   // === Validation for solver tiles input ===
   (function(){
     if (!tilesInput) return;
-    const DIGRAPHS_SET = (typeof DIGRAPHS !== 'undefined') ? DIGRAPHS : new Set();
+    const DIGRAPHS_SET = (typeof DIGRAPHS !== 'undefined')
+      ? DIGRAPHS
+      : (window.QuiddlerData && window.QuiddlerData.DIGRAPHS) ? window.QuiddlerData.DIGRAPHS : new Set();
     function validate(text){
       const raw = text || ''; const trimmed = raw.trim(); if (!trimmed) return { ok:true };
   let open=false, start=-1, nested=false; const invalidPattern=new Set(); const invalidDigraphs=new Set(); const invalidChars=new Set();

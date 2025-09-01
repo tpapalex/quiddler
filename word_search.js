@@ -447,21 +447,22 @@ function searchAnagrams(pattern, { minLen = 0, maxLen = Infinity } = {}) {
   const letters = [];
   const tokenRe = /\([a-zA-Z]+\)|[a-zA-Z]/g;
   let m;
-  while ((m = tokenRe.exec(input)) !== null) {
+  while((m = tokenRe.exec(input)) !== null){
     const tok = m[0];
-    if (tok[0] === '(') {
-      const inner = tok.slice(1, -1).toLowerCase(); // guaranteed valid digraph by validator
-      digraphCounts[inner] = (digraphCounts[inner] || 0) + 1;
-      for (const c of inner) letters.push(c);
+    if(tok.startsWith('(')){
+      const inner = tok.slice(1,-1).toLowerCase();
+      if (inner.length === 2 && DIGRAPHS && DIGRAPHS.has(inner)) {
+        digraphCounts[inner] = (digraphCounts[inner]||0)+1;
+        letters.push(inner[0], inner[1]);
+      } else {
+        // treat as plain letters if not a recognized digraph (should already be validated upstream)
+        for(const ch of inner) letters.push(ch);
+      }
     } else {
       letters.push(tok.toLowerCase());
     }
   }
-  if (!letters.length) return [];
-  const literalLen = letters.length;
-  if (literalLen < minLen || literalLen > maxLen) return [];
-
-  const sig = letters.sort().join('');
+  const sig = letters.slice().sort().join('');
   const candidates = ANAGRAM_INDEX.get(sig);
   if (!candidates) return [];
 
@@ -1157,3 +1158,134 @@ const WordSearch = {
 
 // Ensure global access for UI scripts using window.WordSearch (const does not auto-attach)
 try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } catch(_){ }
+
+// ---- Word Search InputValidation integration (migrated from inline script) ----
+;(function(){
+  if (typeof window === 'undefined') return;
+  if (!window.InputValidation) return; // framework not loaded yet
+  // Obtain the digraph set. Note: top-level `const DIGRAPHS` does NOT become window.DIGRAPHS.
+  // We defined DIGRAPHS in card_scores.js (as a top-level const) and also exposed it under window.QuiddlerData.
+  const DIG = (typeof DIGRAPHS !== 'undefined')
+    ? DIGRAPHS
+    : (window.QuiddlerData && window.QuiddlerData.DIGRAPHS) ? window.QuiddlerData.DIGRAPHS : new Set();
+  const ALLOWED = {
+    regex: /[a-zA-Z.*+()]/g,
+    contains: /[a-zA-Z]/g,
+    anagram: /[a-zA-Z()]/g,
+    subanagram: /[a-zA-Z()]/g,
+    length: /[0-9+\-<=]/g,
+  };
+  function collectParenTokens(input){
+    let open=-1; let nested=false; let unmatchedOpen=false; let unmatchedClose=false; const tokens=[]; const chars=[...input];
+    for(let i=0;i<chars.length;i++){
+      const ch=chars[i];
+      if(ch==='('){ if(open!==-1) nested=true; open=i; }
+      else if(ch===')'){
+        if(open===-1){ unmatchedClose=true; }
+        else { const inner=input.slice(open+1,i); tokens.push(inner); open=-1; }
+      }
+    }
+    if(open!==-1) unmatchedOpen=true;
+    return { tokens, nested, unmatchedOpen, unmatchedClose };
+  }
+  // --- Per-type validators (extracted for clarity) ---
+  function validateContains(val){ return /^[a-zA-Z]+$/.test(val) ? { status:'ok' } : { status:'error', message:'Only letters A-Z' }; }
+  function validateLength(val){
+    const p=val.replace(/\s+/g,'');
+    const errors=[]; const num=n=> /^\d+$/.test(n)? parseInt(n,10):(errors.push('Invalid number: '+n), null);
+    let minLen=0, maxLen=Infinity; const finish=()=>{ if(minLen<0||maxLen<0) errors.push('Negative length not allowed'); if(minLen>maxLen) errors.push('Min length exceeds max length'); return errors; };
+    if(/^\d+$/.test(p)){ const n=num(p); if(n!=null){ minLen=maxLen=n; } const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
+    if(/^(\d+)-(\d+)$/.test(p)){ const [,a,b]=p.match(/^(\d+)-(\d+)$/); const n1=num(a), n2=num(b); if(n1!=null&&n2!=null){ minLen=n1; maxLen=n2; } const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
+    if(/^(\d+)-$/.test(p)){ const [,a]=p.match(/^(\d+)-$/); const n=num(a); if(n!=null) minLen=n; const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
+    if(/^-(\d+)$/.test(p)){ const n=num(p.slice(1)); if(n!=null){ minLen=0; maxLen=n; } const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
+    if(/^(>=|<=|>|<)\d+$/.test(p)){ const [,op,numStr]=p.match(/^(>=|<=|>|<)(\d+)$/); const n=parseInt(numStr,10); if(op==='>=') minLen=n; else if(op==='<=') maxLen=n; else if(op==='>') minLen=n+1; else if(op==='<') maxLen=Math.max(0,n-1); const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
+    if(/^\d+\+$/.test(p)){ const n=num(p.slice(0,-1)); if(n!=null) minLen=n; const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
+    return { status:'error', message:'Unrecognized length pattern' };
+  }
+  function validateParenAware(val, { allowMeta=false, warnLargeSub=false }={}){
+    const scan=collectParenTokens(val);
+    if(scan.unmatchedOpen || scan.unmatchedClose) return { status:'error', message:'Unmatched parentheses' };
+    if(scan.nested) return { status:'error', message:'Nested parentheses' };
+    const invalidDigraphPattern=[]; const badDigraph=[]; const invalidChars=new Set();
+    for(const inner of scan.tokens){
+      if(!/^[a-zA-Z]+$/.test(inner)){ invalidDigraphPattern.push('('+inner.toLowerCase()+')'); continue; }
+      if(inner.length!==2){ invalidDigraphPattern.push('('+inner.toLowerCase()+')'); continue; }
+      if(!DIG.has(inner.toLowerCase())) badDigraph.push('('+inner.toLowerCase()+')');
+    }
+    if(invalidDigraphPattern.length) return { status:'error', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
+    if(badDigraph.length) return { status:'error', message:'Non-existent digraphs: '+badDigraph.join(', ') };
+    const stripped=val.replace(/\([^)]+\)/g,'');
+    for(const ch of stripped){
+      if(allowMeta){ if(/[a-zA-Z.*+]/.test(ch)) continue; }
+      else { if(/[a-zA-Z]/.test(ch)) continue; }
+      if(/[()\s]/.test(ch)) continue;
+      invalidChars.add(ch);
+    }
+    if(invalidChars.size) return { status:'error', message:'Invalid characters: '+[...invalidChars].join(', ') };
+    if(warnLargeSub){
+      let letters=0; const tokenRe=/\([^)]+\)|[a-zA-Z]/g; let m; while((m=tokenRe.exec(val))!==null){ const tok=m[0]; letters += tok.startsWith('(')? tok.length-2 : 1; }
+      if(letters>15) return { status:'warning', message:'Large rack, solver may time out' };
+    }
+    return { status:'ok' };
+  }
+  const validators = {
+    contains: v => validateContains(v),
+    length: v => validateLength(v),
+    regex: v => validateParenAware(v, { allowMeta:true }),
+    anagram: v => validateParenAware(v),
+    subanagram: v => validateParenAware(v, { warnLargeSub:true }),
+  };
+  function validateByType(type, raw){
+    const val = (raw==null?'':String(raw)).trim(); if(!val) return { status:'ok' };
+    const fn = validators[type] || validators.regex;
+    return fn(val);
+  }
+  // Register once (dynamic covers future rows)
+  try {
+    const reg = window.InputValidation.register({
+      selector:'#searchRows .ws-input', dynamic:true, groupId:'word-search', debounceMs:600, showTooltipOn:'hover', errorClass:'ws-error',
+      allowed:function(currentValue, prevValue, ev){
+        try {
+          const el = ev && ev.target && ev.target.classList && ev.target.classList.contains('ws-input') ? ev.target : this;
+          const row = el && el.closest ? el.closest('div') : null;
+          const sel = row ? row.querySelector('.ws-type') : null;
+          const type = sel ? sel.value : 'regex';
+          const re = ALLOWED[type] || /[\s\S]/g;
+          const filtered = (currentValue.match(re)||[]).join('');
+          if (el && filtered !== currentValue) { el.value = filtered; }
+          return filtered;
+        } catch(_){ return currentValue; }
+      },
+      validate:function(value, el){ const row=el.closest('div'); const sel=row?row.querySelector('.ws-type'):null; const type=sel?sel.value:'regex'; return validateByType(type, value); }
+    });
+    // Revalidate inputs when their type select changes (new rules may apply)
+    const rowsContainer = document.getElementById('searchRows');
+    if(rowsContainer){
+      rowsContainer.addEventListener('change', (e)=>{
+        const sel = e.target && e.target.classList && e.target.classList.contains('ws-type') ? e.target : null;
+        if(!sel) return;
+        const row = sel.closest('div');
+        const inp = row ? row.querySelector('.ws-input') : null;
+        if(inp && window.InputValidation && typeof window.InputValidation.validateElement==='function'){
+          // Defer so the other listener (which focuses/selects input) runs first; instance created after focus won't auto-show.
+          setTimeout(()=>{ window.InputValidation.validateElement(inp); },0);
+        }
+      });
+    }
+    // Remove default Tailwind focus ring utility classes from dynamically created inputs to avoid blue halo overriding ws-error outline.
+    const stripFocusRings = (el) => {
+      if(!el || !el.classList) return; el.classList.forEach(cls=>{ if(/^focus:/.test(cls) && /ring/.test(cls)) el.classList.remove(cls); });
+    };
+    // Initial existing inputs
+    document.querySelectorAll('#searchRows .ws-input').forEach(stripFocusRings);
+    // Observe future additions via MutationObserver (already used by framework, but we add a small observer for style cleanup)
+    const mo = new MutationObserver(muts=>{
+      for(const m of muts){
+        m.addedNodes.forEach(n=>{
+          if(n.nodeType===1){ if(n.matches && n.matches('#searchRows .ws-input')) stripFocusRings(n); n.querySelectorAll && n.querySelectorAll('.ws-input').forEach(stripFocusRings); }
+        });
+      }
+    });
+    try { mo.observe(document.getElementById('searchRows'), { childList:true, subtree:true }); } catch(_){ }
+  } catch(_){ }
+})();

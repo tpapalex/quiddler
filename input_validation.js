@@ -142,7 +142,7 @@
 
     el.addEventListener('input', ev => {
       const prev = el.value; filterValue(el, meta.cfg, prev, ev);
-  if (el.dataset.ivState === 'error' || el.dataset.ivState === 'warning') clearIssue(el, meta); // clear style while editing
+      if (el.dataset.ivState === 'error' || el.dataset.ivState === 'warning') clearIssue(el, meta); // clear style while editing
       setState(el, meta, 'dirty');
       if (meta.timer) clearTimeout(meta.timer);
       meta.timer = setTimeout(()=>{ if(document.contains(el)) softValidate(el, meta); }, meta.debounceMs);
@@ -171,5 +171,8 @@
   function anyBlockingInvalid(groupId){ const els=groups.get(groupId); if(!els) return false; for(const el of els){ if(el.dataset.ivState==='error') return true; } return false; }
   function anyWarnings(groupId){ const els=groups.get(groupId); if(!els) return false; for(const el of els){ if(el.dataset.ivState==='warning') return true; } return false; }
 
-  window.InputValidation = { register, validateGroup, anyBlockingInvalid, anyWarnings };
+  function validateElement(el){
+    if(!el) return true; const meta = registry.get(el); if(!meta) return true; return hardValidate(el, meta);
+  }
+  window.InputValidation = { register, validateGroup, anyBlockingInvalid, anyWarnings, validateElement };
 })();

@@ -171,7 +171,9 @@ function loadPreGameConfig() {
 // --- Generic input validation registration for player word inputs ---
 // Register validation for player inputs immediately (dynamic attaches future ones)
 if (typeof window !== 'undefined') {
-  const DIGRAPHS_SET = (typeof DIGRAPHS !== 'undefined') ? DIGRAPHS : new Set();
+  const DIGRAPHS_SET = (typeof DIGRAPHS !== 'undefined')
+    ? DIGRAPHS
+    : (window.QuiddlerData && window.QuiddlerData.DIGRAPHS) ? window.QuiddlerData.DIGRAPHS : new Set();
   const validatePlayerWords = (text, ctx) => {
     const trimmed = (text||'').trim(); if(!trimmed) return { status:'ok' };
     let open=false,start=-1,nested=false; const badPattern=new Set(); const badDigraphs=new Set(); const badChars=new Set();
