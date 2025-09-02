@@ -218,7 +218,34 @@
       html[data-q-restoring] body > .mt-6.text-center {
         visibility: hidden !important;
       }
+      /* Fade-in + reserved height for main panel to reduce jarring height flash */
+      #mainPanel {
+        transition: opacity 0.18s ease;
+      }
+      html[data-q-restoring] #mainPanel {
+        opacity: 0;
+      }
+      /* Provide a conservative default min-height (will be overridden by stored value script if available) */
+      #mainPanel {
+        min-height: 320px;
+      }
     </style>
+    <!-- Early: apply previously stored panel height as min-height to reduce layout jump on restore -->
+    <script>
+      (function () {
+        try {
+          var h = localStorage.getItem("quiddlerLastPanelH");
+          if (h) {
+            var n = parseInt(h, 10);
+            if (n > 200 && n < 4000) {
+              var st = document.createElement("style");
+              st.textContent = "#mainPanel{min-height:" + n + "px}";
+              document.head.appendChild(st);
+            }
+          }
+        } catch (_) {}
+      })();
+    </script>
     <script>
       (function () {
         try {
@@ -239,7 +266,10 @@
     </script>
   </head>
   <body class="bg-gray-100 p-4">
-    <div class="max-w-3xl mx-auto bg-white shadow-md rounded-lg p-6">
+    <div
+      id="mainPanel"
+      class="max-w-3xl mx-auto bg-white shadow-md rounded-lg p-6"
+    >
       <div class="mb-4 text-center">
         <h1
           class="text-2xl font-bold inline-flex items-center gap-3 justify-center w-full"
@@ -1013,6 +1043,24 @@
       focusPlayersIfPreGame();
       setTimeout(focusPlayersIfPreGame, 0);
       requestAnimationFrame(focusPlayersIfPreGame);
+
+      // After restore / initial layout, record main panel height for next load anti-flash smoothing
+      (function () {
+        function storeH() {
+          try {
+            var p = document.getElementById("mainPanel");
+            if (!p) return;
+            var h = p.offsetHeight;
+            if (h > 200 && h < 4000) {
+              localStorage.setItem("quiddlerLastPanelH", String(h));
+            }
+          } catch (_) {}
+        }
+        // Store shortly after potential restore completes
+        setTimeout(storeH, 600); // early
+        setTimeout(storeH, 1800); // after animations / lazy content
+        window.addEventListener("beforeunload", storeH);
+      })();
 
       // Mobile FAB collapse / expand
       (function () {
