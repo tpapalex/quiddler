@@ -710,14 +710,15 @@ function wordMatchesWildcardSpec(spec, word, mode, { digraphUnits = true } = {})
   }
 }
 
-function searchAnagramLike(pattern, mode, { minLen = 0, maxLen = Infinity } = {}) {
+function searchAnagramLike(pattern, mode, { minLen = 0, maxLen = Infinity, regexOptions } = {}) {
   ensureInit();
   const raw = String(pattern==null?'':pattern).trim();
   // -------- Pure wildcard fast path (no literal letters or digraph tokens) --------
   // Recognize patterns consisting solely of wildcard metas . ? * +
   // Disabled when digraphUnits is true because unit->letter expansion (1..2) would require filtering to avoid false positives / omissions.
+  const mergedRegexOptions = { ...__regexOptions, ...(regexOptions||{}) };
+  const digraphUnitsFast = !!mergedRegexOptions.digraphUnits;
   if (/^[.?*+]+$/.test(raw)) {
-    const digraphUnitsFast = (__regexOptions && __regexOptions.digraphUnits) || false;
     if (!digraphUnitsFast) {
       let dots=0, qs=0, plus=0, stars=0;
       for (const ch of raw) {
@@ -762,7 +763,7 @@ function searchAnagramLike(pattern, mode, { minLen = 0, maxLen = Infinity } = {}
   }
   const spec = parseWildcardAnagramPattern(pattern);
   if (!spec.ok) return [];
-  const digraphUnits = (__regexOptions && __regexOptions.digraphUnits) || false;
+  const digraphUnits = !!mergedRegexOptions.digraphUnits;
   // Fast path: no wildcards (spec.anyMin==0 && anyMax==0 && !spec.hasWildcards)
   if (!spec.hasWildcards) {
     // Reconstruct plain letters for signature (each digraph literal contributes its letters)
@@ -846,9 +847,28 @@ function searchAnagramLike(pattern, mode, { minLen = 0, maxLen = Infinity } = {}
   return out;
 }
 
-function searchAnagrams(pattern, { minLen = 0, maxLen = Infinity } = {}) { return searchAnagramLike(pattern, 'anagram', { minLen, maxLen }); }
+function searchAnagrams(pattern, { minLen = 0, maxLen = Infinity, regexOptions } = {}) {
+  // Cache key must include digraphUnits to avoid stale results when overriding.
+  const digraphUnits = (regexOptions && 'digraphUnits' in regexOptions) ? !!regexOptions.digraphUnits : (!!(__regexOptions && __regexOptions.digraphUnits));
+  const cacheKey = pattern + '|' + (digraphUnits ? 'du1':'du0');
+  let cached = __anagramCache.get(cacheKey);
+  if (!cached) {
+    cached = searchAnagramLike(pattern, 'anagram', { minLen, maxLen, regexOptions });
+    __anagramCache.set(cacheKey, cached);
+  }
+  return cached;
+}
 
-function searchSubanagrams(pattern, { minLen = 0, maxLen = Infinity } = {}) { return searchAnagramLike(pattern, 'sub', { minLen, maxLen }); }
+function searchSubanagrams(pattern, { minLen = 0, maxLen = Infinity, regexOptions } = {}) {
+  const digraphUnits = (regexOptions && 'digraphUnits' in regexOptions) ? !!regexOptions.digraphUnits : (!!(__regexOptions && __regexOptions.digraphUnits));
+  const cacheKey = pattern + '|' + (digraphUnits ? 'du1':'du0');
+  let cached = __subanaCache.get(cacheKey);
+  if (!cached) {
+    cached = searchAnagramLike(pattern, 'sub', { minLen, maxLen, regexOptions });
+    __subanaCache.set(cacheKey, cached);
+  }
+  return cached;
+}
 
 // --------- Subanagram Supply Semantics Matcher (S2) ---------
 function subanagramSupplyMatches(spec, word, { digraphUnits = true } = {}) {
@@ -1041,6 +1061,12 @@ function normalizePostValidation(kind, input){
   }
   return input;
 }
+
+// Reintroduced lightweight validators for anagram / subanagram patterns (legacy cleanup removed originals).
+// Behavior: use buildMinimalValidation then downgrade 'bad-digraph' errors to warnings (non-blocking),
+// matching the UI's InputValidation approach where unknown digraphs are warnings.
+function validateAnagrams(pattern) { if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] }; return buildMinimalValidation('anagram', String(pattern)); }
+function validateSubanagrams(pattern) { if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] }; return buildMinimalValidation('subanagram', String(pattern)); }
 
 // ------------------ Length Pattern Parsing & Validation ------------------
 // Supported syntaxes (whitespace ignored):
@@ -1290,7 +1316,7 @@ function scoreRackForEnumeration(rackCounts) {
 //       'alpha+', 'alpha-' (alphabetical ascending / descending)
 //    Aliases: 'length+', 'length-', 'length-asc', 'length-desc', 'alpha', 'alpha-asc', 'alpha-desc'
 //  - Always returns words now (previous returnWords/debug removed).
-function searchMulti(specs, { sortMode } = {}) {
+function searchMulti(specs, { sortMode, regexOptions } = {}) {
   ensureInit();
   if (!Array.isArray(specs)) return { ok:false, errors:[vErr('invalid-args','Specs must be an array')] };
   if (!specs.length) return { ok:true, indices:[], words: [], plan:[], minLen:0, maxLen:Infinity };
@@ -1315,12 +1341,15 @@ function searchMulti(specs, { sortMode } = {}) {
     if (!valRes.ok) { errors.push(...valRes.errors.map(e=>({...e, type }))); continue; }
 
     let inherentMin=0, inherentMax=Infinity, meta={};
+    // Merge regexOptions precedence: global < top-level call < per-spec
+    const mergedRegexOptions = { ...__regexOptions, ...(regexOptions||{}), ...(s.options && s.options.regexOptions ? s.options.regexOptions : {}) };
     if (type==='length') {
       inherentMin = valRes.minLen; inherentMax = valRes.maxLen;
     } else if (type==='regex') {
       // parse / cache
-      let parsed = __regexParseCache.get(valRes.normalized);
-      if (!parsed) { parsed = parseSimplifiedRegex(valRes.normalized); __regexParseCache.set(valRes.normalized, parsed); }
+      const regexCacheKey = valRes.normalized + '|' + (mergedRegexOptions.digraphUnits ? 'du1':'du0');
+      let parsed = __regexParseCache.get(regexCacheKey);
+      if (!parsed) { parsed = parseSimplifiedRegex(valRes.normalized, mergedRegexOptions); __regexParseCache.set(regexCacheKey, parsed); }
       if (parsed.error) { errors.push(vErr('parse-fail','Regex parse failed',{ pattern: valRes.normalized })); continue; }
       inherentMin = parsed.minLen; inherentMax = parsed.maxLen;
       meta.parsed = parsed;
@@ -1330,7 +1359,7 @@ function searchMulti(specs, { sortMode } = {}) {
         // Wildcard anagram: derive bounds via wildcard spec
         const wildSpec = parseWildcardAnagramPattern(valRes.normalized);
         if (!wildSpec.ok) { errors.push(vErr('parse-fail','Wildcard anagram parse failed',{ pattern: valRes.normalized })); continue; }
-        const digraphUnits = (__regexOptions && __regexOptions.digraphUnits) || false;
+        const digraphUnits = !!mergedRegexOptions.digraphUnits;
         const letterMinReq = wildSpec.totalLiteralLetters + wildSpec.anyMin;
         const letterMaxReq = wildSpec.anyMax === Infinity ? Infinity : wildSpec.totalLiteralLetters + wildSpec.anyMax * (digraphUnits ? 2 : 1);
         inherentMin = letterMinReq; inherentMax = letterMaxReq;
@@ -1357,7 +1386,7 @@ function searchMulti(specs, { sortMode } = {}) {
     // apply to global bounds
     if (inherentMin > globalMin) globalMin = inherentMin;
     if (inherentMax < globalMax) globalMax = inherentMax;
-    norm.push({ type, pattern: String(pattern), normalized: valRes.normalized, inherentMin, inherentMax, meta, options: s.options || {} });
+  norm.push({ type, pattern: String(pattern), normalized: valRes.normalized, inherentMin, inherentMax, meta, options: s.options || {}, mergedRegexOptions });
   }
   if (errors.length) return { ok:false, errors };
   // Early unsatisfiable length bounds. Ensure consistent shape (include words:[]).
@@ -1425,7 +1454,7 @@ function searchMulti(specs, { sortMode } = {}) {
     const t=spec.type;
     const minLen = globalMin, maxLen = globalMax;
   let action='enumerate';
-    if (t==='regex') {
+  if (t==='regex') {
       // literal: direct lookup + length check
       if (spec.meta.parsed.type==='literal') {
         const w=spec.meta.parsed.data.word; const idx = WORD_TO_INDEX.get(w);
@@ -1465,13 +1494,9 @@ function searchMulti(specs, { sortMode } = {}) {
         produced = searchRegex(spec.normalized, { minLen, maxLen });
       }
     } else if (t==='anagram') {
-      let cached = __anagramCache.get(spec.normalized);
-      if (!cached) { cached = searchAnagrams(spec.normalized, { minLen, maxLen }); __anagramCache.set(spec.normalized, cached); }
-      produced = cached;
+      produced = searchAnagrams(spec.normalized, { minLen, maxLen, regexOptions: spec.mergedRegexOptions });
     } else if (t==='subanagram') {
-      let cached = __subanaCache.get(spec.normalized);
-      if (!cached) { cached = searchSubanagrams(spec.normalized, { minLen, maxLen }); __subanaCache.set(spec.normalized, cached); }
-      produced = cached;
+      produced = searchSubanagrams(spec.normalized, { minLen, maxLen, regexOptions: spec.mergedRegexOptions });
     }
     produced = uniqueSorted(produced);
     const after = current ? (action==='filter' ? produced : intersectSorted(current, produced)) : produced;
@@ -1525,6 +1550,8 @@ const WordSearch = {
   getRegexOptions: _getRegexOptions,
   searchAnagrams,
   validateRegex,
+  validateAnagrams,
+  validateSubanagrams,
   parseLengthPattern,
   validateLengthPattern,
   searchSubanagrams,
@@ -1594,7 +1621,7 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
       if(!DIG.has(inner.toLowerCase())) badDigraph.push('('+inner.toLowerCase()+')');
     }
   if(invalidDigraphPattern.length) return { status:'error', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
-  if(badDigraph.length) return { status:'warning', message:'Non-existent digraphs: '+badDigraph.join(', ') };
+  if(badDigraph.length) return { status:'error', message:'Non-existent digraphs: '+badDigraph.join(', ') };
     const stripped=trimmed.replace(/\([^)]+\)/g,'');
     for(const ch of stripped){
   if(/[a-zA-Z.*+?]/.test(ch)) continue;
@@ -1628,7 +1655,7 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
       if(!DIG.has(inner.toLowerCase())) badDigraph.push('('+inner.toLowerCase()+')');
     }
   if(invalidDigraphPattern.length) return { status:'error', message:'Invalid digraph pattern: '+invalidDigraphPattern.join(', ') };
-  if(badDigraph.length) return { status:'warning', message:'Non-existent digraphs: '+badDigraph.join(', ') };
+  if(badDigraph.length) return { status:'error', message:'Non-existent digraphs: '+badDigraph.join(', ') };
     const stripped=val.replace(/\([^)]+\)/g,'');
     for(const ch of stripped){
   if(allowMeta){ if(/[a-zA-Z.*+?]/.test(ch)) continue; }
