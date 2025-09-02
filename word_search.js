@@ -663,35 +663,43 @@ function wordMatchesWildcardSpec(spec, word, mode, { digraphUnits = true } = {})
     for (const [ch, need] of letterNeed.entries()) { if ((have[ch]||0) < need) return false; }
   }
   // Compute leftover letters string after reserving digraph literal spans & reserving the minimal necessary single-letter literal tokens.
-  // Simplification: remove all digraph literal span letters; then we will subtract the needed counts of single-letter literals from remaining letters (treat them consumed).
-  let leftoverLettersArr = [];
-  for (let i=0;i<lower.length;i++) if (!consumed[i]) leftoverLettersArr.push(lower[i]);
-  // Consume single-letter literal counts from leftoverLettersArr greedily
+  // Previous implementation compacted leftover letters which incorrectly let wildcard tokens (especially '.') treat
+  // non-adjacent letters (separated by consumed literals) as adjacent, enabling artificial digraph formation.
+  // Fix: operate over original indices; construct contiguous runs of leftover letters based on original positions.
+  // Step A: mark single-letter literal consumptions on original index array (choose earliest occurrences; this may
+  // over-estimate min token usage but will never under-estimate, avoiding false positives).
   if (letterNeed.size) {
-    const counts = Object.create(null);
-    for (const ch of leftoverLettersArr) counts[ch]=(counts[ch]||0)+1;
+    // Build lists of positions per letter
+    const positionsByLetter = Object.create(null);
+    for (let i=0;i<lower.length;i++) if (!consumed[i]) {
+      const ch = lower[i];
+      (positionsByLetter[ch] || (positionsByLetter[ch]=[])).push(i);
+    }
     for (const [ch, need] of letterNeed.entries()) {
-      // already verified availability
-      counts[ch] -= need; if (counts[ch] < 0) return false; // safety
+      const arr = positionsByLetter[ch];
+      if (!arr || arr.length < need) return false; // safety (should have been validated earlier)
+      // Consume earliest indices (simple heuristic). Since removal cannot merge separated runs (indices remain non-consecutive),
+      // this choice won't create invalid adjacency for wildcard pairing.
+      for (let k=0;k<need;k++) consumed[arr[k]] = true;
     }
-    // rebuild leftover letters array
-    const newArr = [];
-    for (const ch of leftoverLettersArr) {
-      if ((letterNeed.get(ch)||0) > 0) {
-        // skip until we've decremented all need
-        letterNeed.set(ch, letterNeed.get(ch)-1);
-      } else if (counts[ch] < 0) {
-        // shouldn't happen
-      } else {
-        newArr.push(ch);
-      }
-    }
-    leftoverLettersArr = newArr.concat(); // ensure copy
   }
-  const leftoverLetters = leftoverLettersArr.join('');
+  // Step B: collect leftover contiguous runs (indices where !consumed and consecutive in original word)
+  const runs = [];
+  let runStart = -1, prev = -2; // prev initialized so first char starts new run
+  for (let i=0;i<lower.length;i++) {
+    if (consumed[i]) { if (runStart !== -1) { runs.push({ start: runStart, end: prev }); runStart = -1; } continue; }
+    if (runStart === -1) { runStart = i; prev = i; }
+    else if (i === prev + 1) { prev = i; }
+    else { runs.push({ start: runStart, end: prev }); runStart = i; prev = i; }
+  }
+  if (runStart !== -1) runs.push({ start: runStart, end: prev });
   const digraphSet = digraphUnits ? (DIGRAPHS || new Set()) : new Set();
-  const minTokensR = digraphUnits ? minTokensForRemainder(leftoverLetters, digraphSet) : leftoverLetters.length;
-  const maxTokensR = leftoverLetters.length; // using all singles
+  let minTokensR = 0; let maxTokensR = 0;
+  for (const r of runs) {
+    const seg = lower.slice(r.start, r.end+1);
+    maxTokensR += seg.length; // all singles
+    if (digraphUnits) minTokensR += minTokensForRemainder(seg, digraphSet); else minTokensR += seg.length;
+  }
   const totalLiteralTokens = spec.totalLiteralTokens; // parenthesized digraphs + single letters
   const candidateTokenMin = totalLiteralTokens + minTokensR;
   const candidateTokenMax = totalLiteralTokens + maxTokensR;
@@ -932,17 +940,23 @@ function subanagramSupplyMatches(spec, word, { digraphUnits = true } = {}) {
   if (spec.plusCount > 0 && deficits < spec.plusCount) return false;
   // Additional pruning: ensure there are enough disjoint digraph occurrences to realize required pairings when relying on 2-letter tokens.
   if (digraphUnits && deficits > wildcardTokenCount) {
-    // Need to pair (deficits - wildcardTokenCount) letters into extra capacity via digraph pairings.
-    const neededPairs = deficits - wildcardTokenCount; // number of tokens that must be size 2 instead of size 1
+    // Need to pair (deficits - wildcardTokenCount) letters via digraphs composed ONLY of remaining deficit letters.
+    const neededPairs = deficits - wildcardTokenCount;
     if (neededPairs > 0) {
-      // Count max disjoint digraph occurrences in word (simple greedy scan)
-      const lower = word.toLowerCase();
-      let pairs=0; let i=0;
-      while (i < lower.length-1 && pairs < neededPairs) {
+      const needCopy = { ...need }; // counts of remaining deficit letters
+      let pairs = 0;
+      // Greedy scan over contiguous digraph occurrences; only use one if both letters still deficit.
+      for (let i=0; i < lower.length-1 && pairs < neededPairs; i++) {
         const dg = lower.slice(i,i+2);
-        if (DIGRAPHS && DIGRAPHS.has(dg)) { pairs++; i += 2; } else i++;
+        if (DIGRAPHS && DIGRAPHS.has(dg)) {
+          const a = dg[0], b = dg[1];
+          if ((needCopy[a]||0) > 0 && (needCopy[b]||0) > 0) {
+            needCopy[a]--; needCopy[b]--; pairs++;
+            // Skip overlapping with itself by advancing one position only; overlapping digraphs can still be considered at i+1.
+          }
+        }
       }
-      if (pairs < neededPairs) return false;
+      if (pairs < neededPairs) return false; // insufficient valid digraph pairings from leftover letters
     }
   }
   return true;
