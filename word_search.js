@@ -1716,7 +1716,7 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
     if(/^\d+\+$/.test(p)){ const n=num(p.slice(0,-1)); if(n!=null) minLen=n; const errs=finish(); return errs.length? { status:'error', message:errs.join('; ') } : { status:'ok' }; }
     return { status:'error', message:'Unrecognized length pattern' };
   }
-  function validateParenAware(val, { allowMeta=false, warnLargeSub=false }={}){
+  function validateParenAware(val, { allowMeta=false, warnLargeSub=false, suppressBroadWarning=false }={}){
     const scan=collectParenTokens(val);
     if(scan.unmatchedOpen || scan.unmatchedClose) return { status:'error', message:'Unmatched parentheses' };
     if(scan.nested) return { status:'error', message:'Nested parentheses' };
@@ -1736,21 +1736,21 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
       invalidChars.add(ch);
     }
     if(invalidChars.size) return { status:'error', message:'Invalid characters: '+[...invalidChars].join(', ') };
-    // Heuristic warnings
+  // Heuristic warnings (skip if suppressed)
     let letters=0; const tokenRe=/\([^)]+\)|[a-zA-Z]/g; let m; while((m=tokenRe.exec(val))!==null){ const tok=m[0]; letters += tok.startsWith('(')? tok.length-2 : 1; }
     const hasWild = /[.?*+]/.test(val);
     const unbounded = /[+*]/.test(val);
     const wildcardCount = (val.match(/[.?*+]/g)||[]).length;
-    // Broad pattern warnings (both anagram & subanagram when allowMeta)
-    if(allowMeta && hasWild){
+  // Broad pattern warnings (both anagram & subanagram when allowMeta) unless suppressed
+  if(!suppressBroadWarning && allowMeta && hasWild){
       // crude density: wildcards vs total tokens (letters+wildcards)
       const totalTokens = letters + wildcardCount; const density = wildcardCount / Math.max(1,totalTokens);
       if(unbounded){
         // Subanagram (warnLargeSub flag true) always warn; anagram/regex only if few literals (letters <=2)
         if(warnLargeSub || letters <= 2) {
           const msg = warnLargeSub
-            ? 'Subanagram pattern has * or +; expect a very large result set'
-            : 'Anagram pattern has * or + with few literals; may return many words';
+            ? 'Subanagram pattern has * or +; expect a large result set'
+            : 'Anagram pattern has * or + with few literals; expect a large result set';
           return { status:'warning', message: msg };
         }
       }
@@ -1759,11 +1759,13 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
     return { status:'ok' };
   }
   const validators = {
-    contains: v => validateContains(v),
+    // Contains now also suppresses broad pattern warnings (same as regex/Pattern)
+    contains: v => validateParenAware(v, { allowMeta:true, suppressBroadWarning:true }),
     length: v => validateLength(v),
-    regex: v => validateParenAware(v, { allowMeta:true }),
-  anagram: v => validateParenAware(v, { allowMeta:true }),
-  subanagram: v => validateParenAware(v, { allowMeta:true, warnLargeSub:true }),
+    // 'Pattern' (regex) should not show broadness warnings; suppress them.
+    regex: v => validateParenAware(v, { allowMeta:true, suppressBroadWarning:true }),
+    anagram: v => validateParenAware(v, { allowMeta:true }),
+    subanagram: v => validateParenAware(v, { allowMeta:true, warnLargeSub:true }),
   };
   function validateByType(type, raw){
     const val = (raw==null?'':String(raw)).trim(); if(!val) return { status:'ok' };
