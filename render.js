@@ -49,9 +49,7 @@ function renderChit(word, opts = {}) {
     ? `<span class="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-500 hover:bg-gray-600 text-white cursor-pointer def-open"
              data-word="${word.text.replace(/"/g,'&quot;')}"
              data-tippy-content="Look up"
-             title="">
-         <img src="book-open.svg" alt="" class="w-3 h-3 filter invert"/>
-       </span>`
+             title="">${(window.QuiddlerIcons && window.QuiddlerIcons.img) ? window.QuiddlerIcons.img('dictionary','w-2.5 h-2.5 filter invert') : '<img src="icons/magnifying-glass.svg" alt="" class="w-2.5 h-2.5 filter invert"/>'}</span>`
     : '';
 
   // interactive wiring (only when interactive=true)

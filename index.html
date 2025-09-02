@@ -75,21 +75,21 @@
         box-shadow:0 0 0 1px #60a5fa inset, 0 0 0 3px #bfdbfe; /* inner blue-400, outer blue-200 */
         outline:none;
       }
-  /* Generic warning focus style */
-  input.ws-warn:focus { box-shadow:0 0 0 1px #fbbf24 inset, 0 0 0 3px #fde68a; outline:none; }
-  /* Ensure error outline remains consistent (already defined above for .ws-error:focus) */
-  /* Word Search add/remove circular buttons */
-  .ws-add, .ws-remove { border-radius:9999px; padding:0; line-height:1; }
-  /* Enforce perfect circle even if line-height/border differences */
-  .ws-add, .ws-remove { aspect-ratio:1/1; }
-  /* Narrow type/sort selects with ellipsis */
-  .ws-type, #searchSort { max-width:5.4rem; width:5.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  /* Safari fallback: hide overflowing option text (no true ellipsis inside dropdown list) */
-  .ws-type option, #searchSort option { max-width:5.0rem; overflow:hidden; text-overflow:ellipsis; }
-  /* Hide native select arrow to reclaim space */
-  .ws-type, #searchSort { appearance:none; -webkit-appearance:none; -moz-appearance:none; background-image:none !important; padding-right:0.4rem; }
-  /* Remove legacy IE arrow */
-  select.ws-type::-ms-expand, select#searchSort::-ms-expand { display:none; }
+    /* Generic warning focus style */
+    input.ws-warn:focus { box-shadow:0 0 0 1px #fbbf24 inset, 0 0 0 3px #fde68a; outline:none; }
+    /* Ensure error outline remains consistent (already defined above for .ws-error:focus) */
+    /* Word Search add/remove circular buttons */
+    .ws-add, .ws-remove { border-radius:9999px; padding:0; line-height:1; }
+    /* Enforce perfect circle even if line-height/border differences */
+    .ws-add, .ws-remove { aspect-ratio:1/1; }
+    /* Narrow type/sort selects with ellipsis */
+    .ws-type, #searchSort { max-width:5.4rem; width:5.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    /* Safari fallback: hide overflowing option text (no true ellipsis inside dropdown list) */
+    .ws-type option, #searchSort option { max-width:5.0rem; overflow:hidden; text-overflow:ellipsis; }
+    /* Hide native select arrow to reclaim space */
+    .ws-type, #searchSort { appearance:none; -webkit-appearance:none; -moz-appearance:none; background-image:none !important; padding-right:0.4rem; }
+    /* Remove legacy IE arrow */
+    select.ws-type::-ms-expand, select#searchSort::-ms-expand { display:none; }
     </style>
 </head>
 <body class="bg-gray-100 p-4">
@@ -156,13 +156,17 @@
               <h2 class="font-semibold text-xl leading-none flex items-center" id="roundHeader"></h2>
               <button id="submitRoundBtn" aria-label="Submit current plays" class="inline-flex items-center gap-1 justify-center h-6 px-3 rounded-full border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition disabled:opacity-60 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-sm font-medium translate-y-[1px]" type="button">
                 <span class="select-none">Submit</span>
-                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                  <path fill-rule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clip-rule="evenodd"/>
+                <!-- Inline copy of icons/play.svg for exact match -->
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="w-4 h-4">
+                  <path fill-rule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clip-rule="evenodd" />
                 </svg>
               </button>
               <button id="skipRoundBtn" aria-label="Skip round" class="hidden inline-flex items-center gap-1 justify-center h-6 px-3 rounded-full bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 hover:border-gray-400 active:bg-gray-300 active:border-gray-400 transition disabled:opacity-60 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-sm font-medium translate-y-[1px]" type="button">
                 <span class="select-none">Skip</span>
-                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="w-4 h-4"><path d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256l-7.108-4.061C13.555 6.346 12 7.249 12 8.689v2.34L5.055 7.061Z"/></svg>
+                <!-- Inline copy of icons/forward.svg for exact match -->
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" data-slot="icon" class="w-4 h-4">
+                  <path d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256l-7.108-4.061C13.555 6.346 12 7.249 12 8.689v2.34L5.055 7.061Z" />
+                </svg>
               </button>
             </div>
 
@@ -182,46 +186,47 @@
     <div id="fabWrap" class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
       <!-- Actual action buttons group -->
       <div id="fabButtons" class="flex flex-col gap-3 sm:flex" data-collapsed="true">
-        <button id="dictToolBtn"
-                class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
-                aria-label="Dictionary (⌘/Ctrl+I)"
-                data-tippy-content="Dictionary (⌘/Ctrl+I)"
-                type="button">
-          <img src="book-open.svg" class="w-7 h-7 invert" alt="" />
-        </button>
-
-        <button id="optToolBtn"
-                class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
-                aria-label="Solver (⌘/Ctrl+O)"
-                data-tippy-content="Solver (⌘/Ctrl+O)"
-                type="button">
-          <img src="cog-6-tooth.svg" class="w-7 h-7 invert" alt="" />
-        </button>
-
-  <button id="searchToolBtn"
+  <button id="optToolBtn"
     class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
-    aria-label="Search (⌘/Ctrl+K)"
-    data-tippy-content="Search (⌘/Ctrl+K)"
+    aria-label="Solver (⌘/Ctrl+O)"
+    data-tippy-content="Solver (⌘/Ctrl+O)"
     type="button">
-    <img src="magnifying-glass.svg" class="w-7 h-7 invert" alt="" />
+    <span data-icon="solver" data-icon-classes="w-7 h-7 invert"></span>
+  </button>
+  <button id="dictToolBtn"
+    class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
+    aria-label="Dictionary (⌘/Ctrl+I)"
+    data-tippy-content="Dictionary (⌘/Ctrl+I)"
+    type="button">
+    <span data-icon="dictionary" data-icon-classes="w-7 h-7 invert"></span>
   </button>
 
-        <!-- New Game floating action button -->
-        <button id="newGameBtn"
-                class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
-                aria-label="New Game (⌘/Ctrl+Enter)"
-                data-tippy-content="New Game (⌘/Ctrl+Enter)"
-                type="button">
-          <img src="arrow-path.svg" class="w-7 h-7 invert" alt="" />
+        <button id="searchToolBtn"
+          class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
+          aria-label="Search (⌘/Ctrl+K)"
+          data-tippy-content="Search (⌘/Ctrl+K)"
+          type="button">
+          <span data-icon="search" data-icon-classes="w-7 h-7 invert"></span>
         </button>
+
+        <!-- New Game floating action button -->
+  <button id="newGameBtn"
+    class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
+    aria-label="New Game (⌘/Ctrl+Enter)"
+    data-tippy-content="New Game (⌘/Ctrl+Enter)"
+    type="button">
+    <span data-icon="refresh" data-icon-classes="w-7 h-7 invert"></span>
+  </button>
       </div>
+
       <!-- Mobile toggle button (hidden >= sm) -->
       <button id="fabToggle" aria-label="Actions" aria-expanded="false"
               class="sm:hidden w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
-        <!-- Upward arrow icon -->
+  <span data-icon="collapse" data-icon-classes="w-7 h-7 invert"></span>
+        <!-- Upward arrow icon
         <svg id="fabToggleIcon" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 5.25a.75.75 0 0 1 .53.22l7 7a.75.75 0 1 1-1.06 1.06L12 7.81l-6.47 5.72a.75.75 0 1 1-1-1.12l7-6.2a.75.75 0 0 1 .47-.16Z"/>
-        </svg>
+        </svg> -->
       </button>
     </div>
 
@@ -242,9 +247,18 @@
       <!-- Tabs -->
       <div class="px-4 pt-3">
         <div class="flex text-sm rounded-lg overflow-hidden border border-gray-200 w-full">
-          <button id="toolsTabDict" class="flex-1 px-3 py-2 bg-white text-gray-900 text-center">Dictionary</button>
-          <button id="toolsTabSearch" class="flex-1 px-3 py-2 bg-gray-100 text-gray-600 text-center">Search</button>
-          <button id="toolsTabPlay" class="flex-1 px-3 py-2 bg-gray-100 text-gray-600 text-center">Solver</button>
+          <button id="toolsTabDict" class="flex-1 px-3 py-2 bg-white text-gray-900 text-center flex items-center justify-center gap-1">
+            <span data-icon="dictionary" data-icon-classes="w-4 h-4 opacity-70"></span>
+            <span>Dictionary</span>
+          </button>
+            <button id="toolsTabSearch" class="flex-1 px-3 py-2 bg-gray-100 text-gray-600 text-center flex items-center justify-center gap-1">
+            <span data-icon="search" data-icon-classes="w-4 h-4 opacity-60"></span>
+            <span>Search</span>
+          </button>
+          <button id="toolsTabPlay" class="flex-1 px-3 py-2 bg-gray-100 text-gray-600 text-center flex items-center justify-center gap-1">
+            <span data-icon="solver" data-icon-classes="w-4 h-4 opacity-60"></span>
+            <span>Solver</span>
+          </button>
         </div>
       </div>
 
@@ -403,6 +417,7 @@
     <script src="card_scores.js"></script>
     <script src="collins_dictionary.js"></script>
     <script src="collins_parsing.js"></script>
+  <script src="icons.js"></script>
   <!-- (Removed common_lemmas.js; frequency list unused) -->
   <script src="input_validation.js"></script>
 
