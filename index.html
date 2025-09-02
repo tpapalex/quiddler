@@ -46,6 +46,21 @@
   #fabButtons[data-collapsed='true'] > button:nth-child(2) { transition-delay:60ms; }
   #fabButtons[data-collapsed='true'] > button:nth-child(3) { transition-delay:30ms; }
   #fabButtons[data-collapsed='true'] > button:nth-child(4) { transition-delay:0ms; }
+      /* FIX: When collapsed the container itself was still intercepting taps (its transparent box
+        overlapped right-edge round controls). Disable pointer events on the container too so
+        underlying buttons (gear / cancel) remain clickable. */
+      #fabButtons[data-collapsed='true'] { pointer-events:none; }
+      #fabButtons[data-collapsed='false'] { pointer-events:auto; }
+        /* Further collapse so the (now transparent) stacked buttons don't occupy a hit-test box in some mobile browsers */
+        #fabButtons[data-collapsed='true'] {
+          height:0 !important;
+          width:0 !important;
+          overflow:hidden !important;
+          margin:0 !important;
+          padding:0 !important;
+        }
+        #fabButtons[data-collapsed='true'] > button { display:none !important; }
+        #fabButtons[data-collapsed='false'] > button { display:flex; }
       }
   /* Word Search subtle error styling */
   .ws-error { border-color:#fda4af !important; background:#fff1f2; box-shadow:0 0 0 1px #fda4af inset; outline:none; }
