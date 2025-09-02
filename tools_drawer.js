@@ -473,10 +473,7 @@ function initToolsDrawer(){
   // ===== Play Helper =====
   const tilesInput        = document.getElementById('tilesInput');
   const optNoDiscard      = document.getElementById('optNoDiscard');
-  const optCommonOnly     = document.getElementById('optCommonOnly');
-  const optCommonOverride = document.getElementById('optCommonOverride');
-  const optZipf           = document.getElementById('optZipf');
-  const zipfVal           = document.getElementById('zipfVal');
+  // (Common-only / Zipf filtering controls removed from UI)
   const optCurrentLongest = document.getElementById('optCurrentLongest');
   const optCurrentMost    = document.getElementById('optCurrentMost');
   const playGo            = document.getElementById('playGo');
@@ -514,16 +511,7 @@ function initToolsDrawer(){
     if (optApiFilter && ds === 'api') optApiFilter.checked = true;
   } catch(_){}
 
-  function updateCommonOptions() {
-    // Enable/disable frequency controls as a group
-    const enabled = optCommonOnly.checked;
-    optCommonOverride.disabled = !enabled;
-    optZipf.disabled = !enabled;
-    optCommonOverride.closest('label').classList.toggle('opacity-50', !enabled);
-    optZipf.classList.toggle('opacity-50', !enabled);
-  }
-  optCommonOnly.addEventListener('change', updateCommonOptions);
-  updateCommonOptions();
+  // Frequency filtering options removed
 
   // === Validation for solver tiles input ===
   // Migrated: solver tiles input now uses generic InputValidation framework (same rules as player words)
@@ -567,9 +555,7 @@ function initToolsDrawer(){
     window.QuiddlerValidation.validateSolverRack = validateSolverRack;
   })();
 
-  const fmtZipf = v => Number(v).toFixed(1);
-  zipfVal.textContent = fmtZipf(optZipf.value);
-  optZipf.addEventListener('input', () => { zipfVal.textContent = fmtZipf(optZipf.value); });
+  // Zipf slider/value removed
 
   function cleanInt(el){ const n = Number(el.value); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0; }
 
@@ -586,9 +572,7 @@ function initToolsDrawer(){
     // Normalize inputs, then call the solver and render results
     const tiles = tilesInput.value.trim().replace(/[, -]+/g, '');
     const noDiscard      = !!optNoDiscard.checked;
-    const commonOnly     = !!optCommonOnly.checked;
-    const override2and3  = commonOnly ? !!optCommonOverride.checked : false;
-    const minZipF        = commonOnly ? Number(optZipf.value) : 0;
+  // Frequency filtering no longer available
     const currentLongest = cleanInt(optCurrentLongest);
     const currentMost    = cleanInt(optCurrentMost);
     const apiFilter      = !!optApiFilter?.checked; // RENAMED
@@ -610,7 +594,7 @@ function initToolsDrawer(){
       const TIMEOUT_MS = 10000; 
       let timedOut = false;
       const result = await Promise.race([
-        window.QuiddlerSolver.optimize({ tiles, noDiscard, commonOnly, override2and3, minZipF, currentLongest, currentMost, apiFilter }),
+  window.QuiddlerSolver.optimize({ tiles, noDiscard, currentLongest, currentMost, apiFilter }),
         new Promise(res => setTimeout(()=>{ timedOut = true; res(null); }, TIMEOUT_MS))
       ]);
 

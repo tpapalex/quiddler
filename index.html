@@ -241,10 +241,10 @@
 
       <!-- Tabs -->
       <div class="px-4 pt-3">
-        <div class="inline-flex text-sm rounded-lg overflow-hidden border border-gray-200">
-          <button id="toolsTabDict" class="px-3 py-2 bg-white text-gray-900">Dictionary</button>
-          <button id="toolsTabSearch" class="px-3 py-2 bg-gray-100 text-gray-600">Search</button>
-          <button id="toolsTabPlay" class="px-3 py-2 bg-gray-100 text-gray-600">Solver</button>
+        <div class="flex text-sm rounded-lg overflow-hidden border border-gray-200 w-full">
+          <button id="toolsTabDict" class="flex-1 px-3 py-2 bg-white text-gray-900 text-center">Dictionary</button>
+          <button id="toolsTabSearch" class="flex-1 px-3 py-2 bg-gray-100 text-gray-600 text-center">Search</button>
+          <button id="toolsTabPlay" class="flex-1 px-3 py-2 bg-gray-100 text-gray-600 text-center">Solver</button>
         </div>
       </div>
 
@@ -285,18 +285,18 @@
         <!-- Play Helper panel -->
         <section id="toolsPanelPlay" class="hidden">
           <!-- Tiles -->
-          <div id="tilesEmpty" class="mb-3 text-sm text-gray-500">
+          <div id="tilesEmpty" class="text-sm text-gray-500 mb-2">
             Enter your hand, using parentheses around digraphs.<br>Tip: spaces and '-' will be ignored.
           </div>
 
           <!-- Tiles input -->
-          <div>
+          <div class="mt-2">
        <input id="tilesInput" type="text" placeholder="e.g. (qu)i ck(er)"
          class="w-full border rounded-lg px-3 py-2 outline-none"/>
           </div>
 
           <!-- New: "Do not discard a card" -->
-          <div class="mt-3">
+          <div class="mt-4">
             <label class="inline-flex items-center gap-2">
               <input id="optNoDiscard" type="checkbox" class="rounded">
               <span class="text-sm">Do not discard any card</span>
@@ -313,28 +313,10 @@
             </label>
           </div>
 
-          <!-- Common/Zipf controls -->
-          <div class="mt-4 mb-2 space-y-2">
-            <label class="flex flex-wrap items-center gap-2">
-              <input id="optCommonOnly" type="checkbox" class="rounded">
-              <span class="text-sm">
-                Use only words with a
-                <a href="https://en.wikipedia.org/wiki/Zipf%27s_law" target="_blank" rel="noopener noreferrer"
-                   class="text-blue-600 hover:underline">Zipf</a>
-                score of:
-                <span id="zipfVal" class="font-semibold">2.0</span>
-              </span>
-            </label>
-            <input id="optZipf" type="range" min="0" max="5" step="0.1" value="2.0"
-                   class="w-full accent-blue-600">
-            <label class="inline-flex items-center gap-2">
-              <input id="optCommonOverride" type="checkbox" class="rounded">
-              <span class="text-sm">Except include all 2 and 3 letter words</span>
-            </label>
-          </div>
+          <!-- Removed Zipf/common-only frequency filtering controls -->
 
           <!-- Current Longest / Current Most -->
-          <div id="currentBonuses" class="grid grid-cols-2 gap-3 hidden">
+          <div id="currentBonuses" class="grid grid-cols-2 gap-3 hidden mt-4">
             <div>
               <label for="optCurrentLongest" class="block text-sm font-medium text-gray-700 mb-1">Longest word to beat</label>
               <input id="optCurrentLongest" type="number" min="0" step="1" value="0"
@@ -348,7 +330,7 @@
           </div>
 
           <!-- Action (spinner + label inside button) -->
-          <div class="mt-3 pt-2 flex items-center gap-2 justify-end">
+          <div class="mt-5 flex items-center gap-2 justify-end">
             <button id="playGo" class="inline-flex items-center gap-2 justify-center h-9 px-4 rounded-md border border-blue-600/40 bg-blue-600/10 text-blue-700 hover:bg-blue-600/20 active:bg-blue-600/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-50 transition text-sm font-medium" type="button"><span id="playGoLabel">Solve</span></button>
           </div>
 

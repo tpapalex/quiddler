@@ -9,7 +9,7 @@ A lightweight, browser-based helper for running and scoring [Quiddler](https://e
 - Words checked against the 13th ed. of the [Collins English Dictionary](https://www.collinsdictionary.com/dictionary/english) (published 2019)
 - Optional single-winner bonuses: Longest Word and Most Words
 - Dictionary: look up words in game dictionary, as well as the [Free Dictionary API](https://dictionaryapi.dev/)
-- Solver: suggests the best play for a given rack, optionally with frequency filters
+- Solver: suggests the best play for a given rack
 - Persistent game state via localStorage; resume after reload
 
 ## Quick start
