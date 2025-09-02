@@ -150,6 +150,12 @@
         box-shadow: 0 0 0 1px #60a5fa inset, 0 0 0 3px #bfdbfe; /* inner blue-400, outer blue-200 */
         outline: none;
       }
+      /* Fallback for first fast focus before InputValidation attaches */
+      input:focus:not([data-iv-state]):not(.ws-error):not(.ws-warn) {
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 1px #60a5fa inset, 0 0 0 3px #bfdbfe;
+        outline: none;
+      }
       /* Generic warning focus style */
       input.ws-warn:focus {
         box-shadow: 0 0 0 1px #fbbf24 inset, 0 0 0 3px #fde68a;
@@ -220,6 +226,7 @@
           </label>
           <input
             id="playersInput"
+            data-iv-state="pristine"
             class="flex-1 p-2 border rounded"
             placeholder="e.g., Alice, Bob, Charlie"
           />
@@ -522,6 +529,7 @@
           <div class="flex items-center gap-2 mb-3">
             <input
               id="dictInput"
+              data-iv-state="pristine"
               type="text"
               placeholder="Type a word…"
               class="flex-1 border rounded-lg px-3 py-2 outline-none focus:ring focus:ring-blue-200"
@@ -585,6 +593,7 @@
           <div class="mt-2">
             <input
               id="tilesInput"
+              data-iv-state="pristine"
               type="text"
               placeholder="e.g. (qu)i ck(er)"
               class="w-full border rounded-lg px-3 py-2 outline-none"
