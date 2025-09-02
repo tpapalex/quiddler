@@ -3,7 +3,7 @@
   Quiddler Scoring App
   - UI: Tailwind-based form for players, rounds, and a tools drawer (Dictionary + Solver)
   - Scripts load order:
-      1) Data: collins_dictionary.js, card_scores.js, common_lemmas.js
+      1) Data: collins_dictionary.js, card_scores.js
       2) ESM: wink-lemmatizer (needed by Solver common-word filter)
       3) App: dictionary_api.js, scoring.js, render.js, optimizer.js, game.js, tools_drawer.js
   - Entry points used by the page: startGame(), initToolsDrawer() (rounds auto-advance after all players submit now)
@@ -329,8 +329,9 @@
             </div>
           </div>
 
-          <!-- Action (spinner + label inside button) -->
-          <div class="mt-5 flex items-center gap-2 justify-end">
+          <!-- Actions -->
+          <div class="mt-5 flex items-center gap-3 justify-end">
+            <button id="playReset" class="inline-flex items-center justify-center h-9 px-4 rounded-md border border-gray-400/50 bg-gray-400/10 text-gray-700 hover:bg-gray-400/20 active:bg-gray-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 disabled:opacity-50 transition text-sm font-medium" type="button">Reset</button>
             <button id="playGo" class="inline-flex items-center gap-2 justify-center h-9 px-4 rounded-md border border-blue-600/40 bg-blue-600/10 text-blue-700 hover:bg-blue-600/20 active:bg-blue-600/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-50 transition text-sm font-medium" type="button"><span id="playGoLabel">Solve</span></button>
           </div>
 
@@ -402,14 +403,10 @@
     <script src="card_scores.js"></script>
     <script src="collins_dictionary.js"></script>
     <script src="collins_parsing.js"></script>
-    <script src="common_lemmas.js"></script>
+  <!-- (Removed common_lemmas.js; frequency list unused) -->
   <script src="input_validation.js"></script>
 
-    <!-- Wink lemmatizer (ESM) -->
-    <script type="module">
-      import lemmatizer from "https://cdn.jsdelivr.net/npm/wink-lemmatizer/+esm";
-      window.winkLemmatizer = lemmatizer;
-    </script>
+  <!-- (Removed wink-lemmatizer; no longer needed) -->
 
     <!-- Split app scripts -->
     <script src="dictionary_api.js"></script>

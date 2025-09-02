@@ -23,6 +23,7 @@ Challenges & bonuses
 - Bonuses (if enabled) award strictly one player per round: longest word length and most words.
 
 ## Tech notes
-- Pure HTML + vanilla JS; no bundler. External CDNs: Tailwind, Popper, Tippy, wink-lemmatizer.
+
+- Pure HTML + vanilla JS; no bundler. External CDNs: Tailwind, Popper, Tippy.
 - Namespaces exposed on window for integration/debugging: QuiddlerGame, QuiddlerRender, QuiddlerSolver, QuiddlerTools, QuiddlerUI, QuiddlerData.
 - State persists under localStorage key quiddlerGameStateV1. Use “New Game” or clear storage to reset.

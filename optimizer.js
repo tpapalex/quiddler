@@ -1,15 +1,10 @@
 // Quiddler best-play solver
-// Pipeline overview:
-// 1) buildTrie: builds a prefix trie from validWordsMap (now always full depth once, lazily)
-// 2) countRack: splits tiles into single letters vs. digraph tile counts
-// 3) makeCommonGateFromEntries: makes a frequency-based filter from common_lemmas.js entries
-// 4) generateWordCandidates: DFS over trie using available rack counts to produce scored candidates
-//    - Keeps distinct usages per plain word (different digraph/single compositions)
-//    - Rejects words that are a single digraph tile (e.g., "qu")
-// 5) chooseBestPlay: branch-and-bound search selecting a set of non-overlapping candidates
-//    - Computes leftover penalty; supports optional discard of a single highest-value tile
-//    - Applies strict bonuses vs. currentLongest/currentMost thresholds
-// 6) optimize: orchestrates, wires to UI params, and returns a summary for rendering
+// Pipeline:
+// 1) buildTrie: prefix trie from validWordsMap (built lazily once)
+// 2) countRack: tally singles vs. digraph tiles
+// 3) generateWordCandidates: DFS over trie with rack counts → scored candidates (keeps distinct usages)
+// 4) chooseBestPlay: branch-and-bound search over candidate list with discard + bonuses
+// 5) optimize: orchestrates and returns a play summary for rendering
 
 // ---------- Build trie ----------
 function buildTrie(words) {
@@ -51,42 +46,8 @@ function countRack(tiles, digraphSet) {
   return { singleCounts, digraphCounts };
 }
 
-// ---------- Common gate helper (runtime knob) ----------
-function makeCommonGateFromEntries(
-  entries,
-  { mode = 'zipf', minZipF = 3.8, topK = 10000, override2and3 = false } = {},
-  lemmatizer
-) {
-  // entries: array of [lemma, zipfScore, rank]
-  // - mode zipf/rank/either/both controls acceptance
-  // - override2and3: allow any 2–3 letter words regardless of frequency
-  // - lemmatizer: optional wink-lemmatizer to map inflected forms to base lemma
-  const MAP = new Map(entries.map(([l, z, r]) => [l, { zipf: z, rank: r }]));
-
-  function lemma(word) {
-    word = word.toLowerCase();
-    let best = word;
-    if (lemmatizer?.noun)      { const n = lemmatizer.noun(word);      if (n && n.length < best.length) best = n; }
-    if (lemmatizer?.verb)      { const v = lemmatizer.verb(word);      if (v && v.length < best.length) best = v; }
-    if (lemmatizer?.adjective) { const a = lemmatizer.adjective(word); if (a && a.length < best.length) best = a; }
-    if (lemmatizer?.adverb)    { const r = lemmatizer.adverb(word);    if (r && r.length < best.length) best = r; }
-    return best;
-  }
-
-  return function isCommon(word) {
-    if (override2and3 && word.length >= 2 && word.length <= 3) return true;
-
-    const l = lemma(word);
-    const rec = MAP.get(l);
-    if (!rec) return false;
-
-    if (mode === 'zipf')   return rec.zipf >= minZipF;
-    if (mode === 'rank')   return rec.rank <= topK;
-    if (mode === 'either') return rec.zipf >= minZipF || rec.rank <= topK;
-    if (mode === 'both')   return rec.zipf >= minZipF && rec.rank <= topK;
-    return false;
-  };
-}
+// ---------- Gate helper (placeholder for future filtering) ----------
+function getGate() { return null; }
 
 // ---------- Generate candidates (keep all distinct usages) ----------
 function generateWordCandidates(trie, rackCounts, opts = {}) {
@@ -94,13 +55,13 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
   // - minLen (default 2): minimum plain word length to accept
   // - maxLen (default Infinity): maximum plain word length to explore (prunes branching beyond)
   // - allowSingleDigraph (default false): if true, allow words composed of exactly one digraph tile (e.g., "qu")
-  // - commonGate: optional predicate(word) -> boolean to filter by frequency/commonness
+  // - gate: optional predicate(word) -> boolean to filter candidates
   // DFS walks trie using available counts. Each path maintains:
   // - path: letters for trie traversal
   // - usedTokens: actual tiles used (singles or digraphs) to compute score/usage
   // De-duplication is per plain word by usage signature so (qu)a vs. q(u)a remain distinct if tiles differ.
   const {
-    commonGate = null,
+  gate = null,
     minLen = 2,
     maxLen = Infinity,
     allowSingleDigraph = false,
@@ -135,7 +96,7 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
     // Skip words that are a single digraph tile unless explicitly allowed
     if (!allowSingleDigraph && usedTokens.length === 1 && usedTokens[0].length > 1) return;
 
-    if (commonGate && !commonGate(plainWord)) return;
+  if (gate && !gate(plainWord)) return;
 
     const usage = usageFromTokens(usedTokens);
     const key = usageKey(usage);
@@ -372,47 +333,44 @@ function chooseBestPlay(candidates, rackCounts, params = {}, budget = null) {
   };
 }
 
-async function optimize(params) {
-  // Params from UI:
-  // - tiles: rack string like "(qu)a(th)i"; parser handles parentheses
-  // - noDiscard: if true, cannot discard one leftover tile; all leftovers penalize
-  // - commonOnly + minZipF + override2and3: frequency filter using common_lemmas.js (window.wordFreq)
-  // - currentLongest/currentMost: thresholds to beat for bonuses (strictly greater)
-  // - apiFilter: if true, further require words to appear in Free Dictionary API (lazy best-play validation)
-  // Returns: bestplay summary consumed by render.renderOptimizedPlayFromResult
+/**
+ * Compute the best play for a rack.
+ * @param {string} tiles Rack string e.g. "(qu)a(th)i". Parentheses wrap digraph tiles.
+ * @param {Object} [opts]
+ * @param {boolean} [opts.noDiscard=false] If true, may not discard a single leftover tile; all leftovers penalize.
+ * @param {number}  [opts.currentLongest=0] Opponent longest to beat (strictly >). 0 disables bonus comparison.
+ * @param {number}  [opts.currentMost=0] Opponent word-count to beat (strictly >). 0 disables bonus comparison.
+ * @param {boolean} [opts.apiFilter=false] If true, re-validates candidate set words against external API.
+ * @param {number}  [opts.timeBudgetMs=5000] Soft time budget for candidate generation / search.
+ * @returns {Promise<{words:Array<{word:string,score:number}>, baseScore:number, leftoverValue:number, bonus:{longest:number,most:number}, totalScore:number, longestWordLength:number, wordCount:number, discardTile:string|null, unusedTiles:string[], _timedOut?:boolean}>}
+ */
+async function optimize(tiles, opts = {}) {
+  // Parse options
   const {
-    tiles = '',
     noDiscard = false,
-    commonOnly = false,
-    override2and3 = false,
-    minZipF = 0,
     currentLongest = 0,
     currentMost = 0,
     apiFilter = false,
-  } = params || {};
+    timeBudgetMs,
+  } = opts;
 
-  const rack = parseCards(String(tiles)).map(normalizeToken);
+  if (!tiles || typeof tiles !== 'string') throw new Error('optimize: tiles string required');
+  const rack = parseCards(tiles).map(normalizeToken);
   const startTime = performance && performance.now ? performance.now() : Date.now();
-  const TIME_BUDGET_MS = params && Number.isFinite(params.timeBudgetMs) ? params.timeBudgetMs : 5000; // soft budget (5s)
+  const TIME_BUDGET_MS = Number.isFinite(timeBudgetMs) ? timeBudgetMs : 5000; // soft budget
   function timedOut(){
     const now = performance && performance.now ? performance.now() : Date.now();
     return now - startTime > TIME_BUDGET_MS;
   }
   const rackCounts = countRack(rack, DIGRAPHS);
 
-  const lemmatizer = (typeof window !== 'undefined') ? window.winkLemmatizer : undefined;
-
-  // Resolve frequency list from global if available
-  const wf = (typeof window !== 'undefined') ? window.wordFreq : undefined;
-
-  const commonGate = (commonOnly && Array.isArray(wf) && wf.length)
-    ? makeCommonGateFromEntries(wf, { mode: 'zipf', override2and3, minZipF }, lemmatizer)
-    : null;
+  // (No frequency/Zipf filtering; build a trivial gate placeholder.)
+  const gate = getGate();
 
   // Use the global, lazily-initialized trie instead of rebuilding each time
   const trie = getValidWordTrie();
   const budget = { start: startTime, budgetMs: TIME_BUDGET_MS, timedOut: false };
-  const candidates = generateWordCandidates(trie, rackCounts, { commonGate, minLen: 2, budget });
+  const candidates = generateWordCandidates(trie, rackCounts, { gate, minLen: 2, budget });
   if (budget.timedOut) {
     return { words: [], baseScore:0, leftoverValue:0, bonus:{longest:0, most:0}, totalScore:0, longestWordLength:0, wordCount:0, discardTile:null, unusedTiles:rack.slice(), _timedOut:true };
   }
@@ -467,7 +425,7 @@ async function optimize(params) {
 }
 
 if (typeof window !== 'undefined') {
-  // Namespace exports used by tools_drawer and debug consoles.
+  // Namespace exports (used by UI + other modules).
   window.QuiddlerSolver = Object.assign({}, window.QuiddlerSolver || {}, {
     optimize,
     countRack, // expose for word_search sub-anagram reuse

@@ -477,6 +477,7 @@ function initToolsDrawer(){
   const optCurrentLongest = document.getElementById('optCurrentLongest');
   const optCurrentMost    = document.getElementById('optCurrentMost');
   const playGo            = document.getElementById('playGo');
+  const playReset         = document.getElementById('playReset');
   // Status now lives inside the button (spinner + label)
   const playStatus        = null;
   const playGoLabel       = document.getElementById('playGoLabel');
@@ -560,6 +561,17 @@ function initToolsDrawer(){
   function cleanInt(el){ const n = Number(el.value); return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0; }
 
   playGo.addEventListener('click', onFindBestPlay);
+  if (playReset) {
+    playReset.addEventListener('click', () => {
+      if (tilesInput) { tilesInput.value = ''; try { window.InputValidation?.validateElement?.(tilesInput); } catch(_){} }
+      if (optNoDiscard) optNoDiscard.checked = false;
+      if (optApiFilter) optApiFilter.checked = false;
+      if (optCurrentLongest) optCurrentLongest.value = '0';
+      if (optCurrentMost)    optCurrentMost.value    = '0';
+      if (playResult) { playResult.innerHTML=''; playResult.classList.add('hidden'); }
+      tilesInput?.focus();
+    });
+  }
   // Pressing Enter in the tiles input triggers Solve
   tilesInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -594,7 +606,7 @@ function initToolsDrawer(){
       const TIMEOUT_MS = 10000; 
       let timedOut = false;
       const result = await Promise.race([
-  window.QuiddlerSolver.optimize({ tiles, noDiscard, currentLongest, currentMost, apiFilter }),
+  window.QuiddlerSolver.optimize(tiles, { noDiscard, currentLongest, currentMost, apiFilter }),
         new Promise(res => setTimeout(()=>{ timedOut = true; res(null); }, TIMEOUT_MS))
       ]);
 
