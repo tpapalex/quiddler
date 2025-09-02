@@ -14,7 +14,10 @@ function buildTrie(words) {
     const w = wRaw.toLowerCase();
     let node = root;
     for (const ch of w) {
-      node = node.children[ch] ??= { children: Object.create(null), end: false };
+      node = node.children[ch] ??= {
+        children: Object.create(null),
+        end: false,
+      };
     }
     node.end = true;
   }
@@ -22,13 +25,17 @@ function buildTrie(words) {
 }
 
 // Global, lazily-initialized trie built from validWordsMap
-let validWordTrie = (typeof window !== 'undefined' && window.validWordTrie) ? window.validWordTrie : null;
+let validWordTrie =
+  typeof window !== "undefined" && window.validWordTrie
+    ? window.validWordTrie
+    : null;
 function getValidWordTrie() {
   // Build once at full depth (no depth limiting); reuse thereafter.
   if (!validWordTrie) {
-    const words = (typeof validWordsMap !== 'undefined') ? Object.keys(validWordsMap) : [];
+    const words =
+      typeof validWordsMap !== "undefined" ? Object.keys(validWordsMap) : [];
     validWordTrie = buildTrie(words);
-    if (typeof window !== 'undefined') window.validWordTrie = validWordTrie;
+    if (typeof window !== "undefined") window.validWordTrie = validWordTrie;
   }
   return validWordTrie;
 }
@@ -40,14 +47,17 @@ function countRack(tiles, digraphSet) {
   const digraphCounts = Object.create(null);
   for (const raw of tiles) {
     const tile = raw.toLowerCase();
-    if (digraphSet.has(tile)) digraphCounts[tile] = (digraphCounts[tile] || 0) + 1;
+    if (digraphSet.has(tile))
+      digraphCounts[tile] = (digraphCounts[tile] || 0) + 1;
     else singleCounts[tile] = (singleCounts[tile] || 0) + 1;
   }
   return { singleCounts, digraphCounts };
 }
 
 // ---------- Gate helper (placeholder for future filtering) ----------
-function getGate() { return null; }
+function getGate() {
+  return null;
+}
 
 // ---------- Generate candidates (keep all distinct usages) ----------
 function generateWordCandidates(trie, rackCounts, opts = {}) {
@@ -61,7 +71,7 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
   // - usedTokens: actual tiles used (singles or digraphs) to compute score/usage
   // De-duplication is per plain word by usage signature so (qu)a vs. q(u)a remain distinct if tiles differ.
   const {
-  gate = null,
+    gate = null,
     minLen = 2,
     maxLen = Infinity,
     allowSingleDigraph = false,
@@ -75,7 +85,10 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
   // const scoreTokens = ts => ts.reduce((s, t) => s + (cardScores[t] || 0), 0);
 
   function usageFromTokens(tokens) {
-    const u = { singleCounts: Object.create(null), digraphCounts: Object.create(null) };
+    const u = {
+      singleCounts: Object.create(null),
+      digraphCounts: Object.create(null),
+    };
     for (const t of tokens) {
       if (t.length === 1) u.singleCounts[t] = (u.singleCounts[t] || 0) + 1;
       else u.digraphCounts[t] = (u.digraphCounts[t] || 0) + 1;
@@ -83,20 +96,31 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
     return u;
   }
   function usageKey(u) {
-    const s = Object.entries(u.singleCounts).sort().map(([k,v])=>k+v).join('');
-    const d = Object.entries(u.digraphCounts).sort().map(([k,v])=>k+v).join('');
-    return s + '|' + d;
+    const s = Object.entries(u.singleCounts)
+      .sort()
+      .map(([k, v]) => k + v)
+      .join("");
+    const d = Object.entries(u.digraphCounts)
+      .sort()
+      .map(([k, v]) => k + v)
+      .join("");
+    return s + "|" + d;
   }
 
   const perWord = new Map();
 
   function pushResult() {
-    const plainWord = path.join('');
+    const plainWord = path.join("");
 
     // Skip words that are a single digraph tile unless explicitly allowed
-    if (!allowSingleDigraph && usedTokens.length === 1 && usedTokens[0].length > 1) return;
+    if (
+      !allowSingleDigraph &&
+      usedTokens.length === 1 &&
+      usedTokens[0].length > 1
+    )
+      return;
 
-  if (gate && !gate(plainWord)) return;
+    if (gate && !gate(plainWord)) return;
 
     const usage = usageFromTokens(usedTokens);
     const key = usageKey(usage);
@@ -104,10 +128,18 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
     const displayWord = joinTokensForDisplay(usedTokens);
 
     let bucket = perWord.get(plainWord);
-    if (!bucket) { bucket = new Map(); perWord.set(plainWord, bucket); }
+    if (!bucket) {
+      bucket = new Map();
+      perWord.set(plainWord, bucket);
+    }
     if (!bucket.has(key)) {
       const score = calculateScore(usedTokens);
-      bucket.set(key, { word: displayWord, score, usage, length: plainWord.length });
+      bucket.set(key, {
+        word: displayWord,
+        score,
+        usage,
+        length: plainWord.length,
+      });
     }
   }
 
@@ -116,8 +148,12 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
     if (budget && !budget.timedOut) {
       // Check every 64 visits to amortize cost
       if ((visitCounter & 63) === 0) {
-        const now = performance && performance.now ? performance.now() : Date.now();
-        if (now - budget.start > budget.budgetMs) { budget.timedOut = true; return; }
+        const now =
+          performance && performance.now ? performance.now() : Date.now();
+        if (now - budget.start > budget.budgetMs) {
+          budget.timedOut = true;
+          return;
+        }
       }
     }
     visitCounter++;
@@ -126,22 +162,33 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
     if (path.length >= maxLen) return; // stop expanding further
 
     for (const [L, c] of Object.entries(singleCounts)) {
-  if (budget && budget.timedOut) return;
-  if (c > 0 && node.children[L] && path.length + 1 <= maxLen) {
-        singleCounts[L]--; path.push(L); usedTokens.push(L);
+      if (budget && budget.timedOut) return;
+      if (c > 0 && node.children[L] && path.length + 1 <= maxLen) {
+        singleCounts[L]--;
+        path.push(L);
+        usedTokens.push(L);
         dfs(node.children[L], singleCounts, digraphCounts);
-        usedTokens.pop(); path.pop(); singleCounts[L]++;
+        usedTokens.pop();
+        path.pop();
+        singleCounts[L]++;
       }
     }
     for (const [DG, c] of Object.entries(digraphCounts)) {
-  if (budget && budget.timedOut) return;
-  if (c > 0) {
-        const a = DG[0], b = DG[1];
-        const n1 = node.children[a], n2 = n1 && n1.children[b];
+      if (budget && budget.timedOut) return;
+      if (c > 0) {
+        const a = DG[0],
+          b = DG[1];
+        const n1 = node.children[a],
+          n2 = n1 && n1.children[b];
         if (n2 && path.length + 2 <= maxLen) {
-          digraphCounts[DG]--; path.push(a,b); usedTokens.push(DG);
+          digraphCounts[DG]--;
+          path.push(a, b);
+          usedTokens.push(DG);
           dfs(n2, singleCounts, digraphCounts);
-          usedTokens.pop(); path.pop(); path.pop(); digraphCounts[DG]++;
+          usedTokens.pop();
+          path.pop();
+          path.pop();
+          digraphCounts[DG]++;
         }
       }
     }
@@ -149,7 +196,8 @@ function generateWordCandidates(trie, rackCounts, opts = {}) {
 
   dfs(trie, { ...rackCounts.singleCounts }, { ...rackCounts.digraphCounts });
 
-  for (const bucket of perWord.values()) for (const cand of bucket.values()) out.push(cand);
+  for (const bucket of perWord.values())
+    for (const cand of bucket.values()) out.push(cand);
   return out;
 }
 
@@ -160,67 +208,83 @@ function chooseBestPlay(candidates, rackCounts, params = {}, budget = null) {
   // bonuses apply only if strictly exceeding opponents' currentLongest/currentMost thresholds.
   const {
     currentLongest = Infinity,
-    currentMost    = Infinity,
-    noDiscard      = false,
-    longestBonus   = 10,
-    mostBonus      = 10,
+    currentMost = Infinity,
+    noDiscard = false,
+    longestBonus = 10,
+    mostBonus = 10,
   } = params;
 
-  candidates.sort((a, b) =>
-    (b.score / Math.max(1, b.length)) - (a.score / Math.max(1, a.length)) ||
-    (b.score - a.score) ||
-    (b.length - a.length)
+  candidates.sort(
+    (a, b) =>
+      b.score / Math.max(1, b.length) - a.score / Math.max(1, a.length) ||
+      b.score - a.score ||
+      b.length - a.length
   );
 
-  const remSingles  = { ...rackCounts.singleCounts };
+  const remSingles = { ...rackCounts.singleCounts };
   const remDigraphs = { ...rackCounts.digraphCounts };
 
   const remainingValue = () => {
     let s = 0;
-    for (const [L, c] of Object.entries(remSingles))  s += (cardScores[L] || 0) * c;
-    for (const [D, c] of Object.entries(remDigraphs)) s += (cardScores[D] || 0) * c;
+    for (const [L, c] of Object.entries(remSingles))
+      s += (cardScores[L] || 0) * c;
+    for (const [D, c] of Object.entries(remDigraphs))
+      s += (cardScores[D] || 0) * c;
     return s;
   };
 
   function totalRemainingCount() {
     let n = 0;
-    for (const c of Object.values(remSingles))  n += c;
+    for (const c of Object.values(remSingles)) n += c;
     for (const c of Object.values(remDigraphs)) n += c;
     return n;
   }
 
   function listRemainingTiles() {
     const arr = [];
-    for (const [t, c] of Object.entries(remSingles))  for (let i = 0; i < c; i++) arr.push(t);
-    for (const [t, c] of Object.entries(remDigraphs)) for (let i = 0; i < c; i++) arr.push(t);
+    for (const [t, c] of Object.entries(remSingles))
+      for (let i = 0; i < c; i++) arr.push(t);
+    for (const [t, c] of Object.entries(remDigraphs))
+      for (let i = 0; i < c; i++) arr.push(t);
     return arr;
   }
 
   function bestDiscardInfo() {
-    let bestTile = null, bestVal = -Infinity;
+    let bestTile = null,
+      bestVal = -Infinity;
     for (const [t, c] of Object.entries(remSingles)) {
       if (c > 0) {
         const v = cardScores[t] || 0;
-        if (v > bestVal) { bestVal = v; bestTile = t; }
+        if (v > bestVal) {
+          bestVal = v;
+          bestTile = t;
+        }
       }
     }
     for (const [t, c] of Object.entries(remDigraphs)) {
       if (c > 0) {
         const v = cardScores[t] || 0;
-        if (v > bestVal) { bestVal = v; bestTile = t; }
+        if (v > bestVal) {
+          bestVal = v;
+          bestTile = t;
+        }
       }
     }
-    return { bestTile, bestVal: (bestVal === -Infinity ? 0 : bestVal) };
+    return { bestTile, bestVal: bestVal === -Infinity ? 0 : bestVal };
   }
 
   const fits = (u) => {
-    for (const [L, c] of Object.entries(u.singleCounts))  if ((remSingles[L]  || 0) < c) return false;
-    for (const [D, c] of Object.entries(u.digraphCounts)) if ((remDigraphs[D] || 0) < c) return false;
+    for (const [L, c] of Object.entries(u.singleCounts))
+      if ((remSingles[L] || 0) < c) return false;
+    for (const [D, c] of Object.entries(u.digraphCounts))
+      if ((remDigraphs[D] || 0) < c) return false;
     return true;
   };
   const apply = (u, sign) => {
-    for (const [L, c] of Object.entries(u.singleCounts))  remSingles[L]  -= sign * c;
-    for (const [D, c] of Object.entries(u.digraphCounts)) remDigraphs[D] -= sign * c;
+    for (const [L, c] of Object.entries(u.singleCounts))
+      remSingles[L] -= sign * c;
+    for (const [D, c] of Object.entries(u.digraphCounts))
+      remDigraphs[D] -= sign * c;
   };
 
   let best = {
@@ -246,29 +310,33 @@ function chooseBestPlay(candidates, rackCounts, params = {}, budget = null) {
     let penalty, discardTile, unusedTiles;
 
     if (noDiscard) {
-      penalty     = remVal;
+      penalty = remVal;
       discardTile = null;
       unusedTiles = listRemainingTiles();
     } else {
       const { bestTile, bestVal } = bestDiscardInfo();
-      penalty     = remVal - bestVal;
+      penalty = remVal - bestVal;
       discardTile = bestTile;
 
       const leftovers = listRemainingTiles();
       let removed = false;
       unusedTiles = [];
       for (const t of leftovers) {
-        if (!removed && t === bestTile) { removed = true; continue; }
+        if (!removed && t === bestTile) {
+          removed = true;
+          continue;
+        }
         unusedTiles.push(t);
       }
     }
 
     const bonus = {
       longest: cur.longest > currentLongest ? longestBonus : 0,
-      most:    cur.count   > currentMost    ? mostBonus   : 0,
+      most: cur.count > currentMost ? mostBonus : 0,
     };
 
-    const total = Math.max(cur.baseScore - penalty, 0) + bonus.longest + bonus.most;
+    const total =
+      Math.max(cur.baseScore - penalty, 0) + bonus.longest + bonus.most;
 
     if (total > best.totalScore) {
       best = {
@@ -287,14 +355,21 @@ function chooseBestPlay(candidates, rackCounts, params = {}, budget = null) {
 
   function dfs(i) {
     if (budget && !budget.timedOut) {
-      const now = performance && performance.now ? performance.now() : Date.now();
-      if (now - budget.start > budget.budgetMs) { budget.timedOut = true; return; }
+      const now =
+        performance && performance.now ? performance.now() : Date.now();
+      if (now - budget.start > budget.budgetMs) {
+        budget.timedOut = true;
+        return;
+      }
     }
     if (budget && budget.timedOut) return;
     const ub = cur.baseScore + remainingValue() + longestBonus + mostBonus;
     if (ub <= best.totalScore) return;
 
-    if (i === candidates.length) { evalCurrent(); return; }
+    if (i === candidates.length) {
+      evalCurrent();
+      return;
+    }
 
     const w = candidates[i];
 
@@ -354,11 +429,13 @@ async function optimize(tiles, opts = {}) {
     timeBudgetMs,
   } = opts;
 
-  if (!tiles || typeof tiles !== 'string') throw new Error('optimize: tiles string required');
+  if (!tiles || typeof tiles !== "string")
+    throw new Error("optimize: tiles string required");
   const rack = parseCards(tiles).map(normalizeToken);
-  const startTime = performance && performance.now ? performance.now() : Date.now();
+  const startTime =
+    performance && performance.now ? performance.now() : Date.now();
   const TIME_BUDGET_MS = Number.isFinite(timeBudgetMs) ? timeBudgetMs : 5000; // soft budget
-  function timedOut(){
+  function timedOut() {
     const now = performance && performance.now ? performance.now() : Date.now();
     return now - startTime > TIME_BUDGET_MS;
   }
@@ -369,50 +446,104 @@ async function optimize(tiles, opts = {}) {
 
   // Use the global, lazily-initialized trie instead of rebuilding each time
   const trie = getValidWordTrie();
-  const budget = { start: startTime, budgetMs: TIME_BUDGET_MS, timedOut: false };
-  const candidates = generateWordCandidates(trie, rackCounts, { gate, minLen: 2, budget });
+  const budget = {
+    start: startTime,
+    budgetMs: TIME_BUDGET_MS,
+    timedOut: false,
+  };
+  const candidates = generateWordCandidates(trie, rackCounts, {
+    gate,
+    minLen: 2,
+    budget,
+  });
   if (budget.timedOut) {
-    return { words: [], baseScore:0, leftoverValue:0, bonus:{longest:0, most:0}, totalScore:0, longestWordLength:0, wordCount:0, discardTile:null, unusedTiles:rack.slice(), _timedOut:true };
+    return {
+      words: [],
+      baseScore: 0,
+      leftoverValue: 0,
+      bonus: { longest: 0, most: 0 },
+      totalScore: 0,
+      longestWordLength: 0,
+      wordCount: 0,
+      discardTile: null,
+      unusedTiles: rack.slice(),
+      _timedOut: true,
+    };
   }
-  if (timedOut()) { // fallback safeguard
-    return { words: [], baseScore:0, leftoverValue:0, bonus:{longest:0, most:0}, totalScore:0, longestWordLength:0, wordCount:0, discardTile:null, unusedTiles:rack.slice(), _timedOut:true };
+  if (timedOut()) {
+    // fallback safeguard
+    return {
+      words: [],
+      baseScore: 0,
+      leftoverValue: 0,
+      bonus: { longest: 0, most: 0 },
+      totalScore: 0,
+      longestWordLength: 0,
+      wordCount: 0,
+      discardTile: null,
+      unusedTiles: rack.slice(),
+      _timedOut: true,
+    };
   }
 
-  let bestplay = chooseBestPlay(candidates, rackCounts, {
-    noDiscard,
-    currentLongest: currentLongest === 0 ? Infinity : currentLongest,
-    currentMost:    currentMost    === 0 ? Infinity : currentMost,
-    longestBonus: longestWordPoints,
-    mostBonus:    mostWordsPoints,
-  }, budget);
+  let bestplay = chooseBestPlay(
+    candidates,
+    rackCounts,
+    {
+      noDiscard,
+      currentLongest: currentLongest === 0 ? Infinity : currentLongest,
+      currentMost: currentMost === 0 ? Infinity : currentMost,
+      longestBonus: longestWordPoints,
+      mostBonus: mostWordsPoints,
+    },
+    budget
+  );
   if (budget.timedOut || timedOut()) {
     return Object.assign(bestplay || {}, { _timedOut: true });
   }
 
   if (apiFilter) {
-    if (typeof validateWordAPIBatch !== 'function') {
-      console.warn('API filter requested but validateWordAPIBatch is unavailable. Skipping API filter.');
+    if (typeof validateWordAPIBatch !== "function") {
+      console.warn(
+        "API filter requested but validateWordAPIBatch is unavailable. Skipping API filter."
+      );
     } else {
       let remainingCandidates = candidates.slice();
       let iterations = 0;
       while (iterations < 5 && bestplay.words.length) {
-        const { invalidPlain } = await validateWordAPIBatch(bestplay.words.map(w => w.word));
+        const { invalidPlain } = await validateWordAPIBatch(
+          bestplay.words.map((w) => w.word)
+        );
         if (!invalidPlain.size) break;
-        remainingCandidates = remainingCandidates.filter(c => !invalidPlain.has(plainWord(c.word).toLowerCase()));
+        remainingCandidates = remainingCandidates.filter(
+          (c) => !invalidPlain.has(plainWord(c.word).toLowerCase())
+        );
         if (!remainingCandidates.length) {
           bestplay = {
-            words: [], baseScore: 0, leftoverValue: 0, bonus: { longest:0, most:0 }, totalScore: 0,
-            longestWordLength: 0, wordCount: 0, discardTile: null, unusedTiles: rack.slice()
+            words: [],
+            baseScore: 0,
+            leftoverValue: 0,
+            bonus: { longest: 0, most: 0 },
+            totalScore: 0,
+            longestWordLength: 0,
+            wordCount: 0,
+            discardTile: null,
+            unusedTiles: rack.slice(),
           };
           break;
         }
-        bestplay = chooseBestPlay(remainingCandidates, rackCounts, {
-          noDiscard,
-          currentLongest: currentLongest === 0 ? Infinity : currentLongest,
-          currentMost:    currentMost    === 0 ? Infinity : currentMost,
-          longestBonus: longestWordPoints,
-          mostBonus:    mostWordsPoints,
-        }, budget);
+        bestplay = chooseBestPlay(
+          remainingCandidates,
+          rackCounts,
+          {
+            noDiscard,
+            currentLongest: currentLongest === 0 ? Infinity : currentLongest,
+            currentMost: currentMost === 0 ? Infinity : currentMost,
+            longestBonus: longestWordPoints,
+            mostBonus: mostWordsPoints,
+          },
+          budget
+        );
         if (budget.timedOut || timedOut()) {
           return Object.assign(bestplay || {}, { _timedOut: true });
         }
@@ -424,7 +555,7 @@ async function optimize(tiles, opts = {}) {
   return bestplay;
 }
 
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   // Namespace exports (used by UI + other modules).
   window.QuiddlerSolver = Object.assign({}, window.QuiddlerSolver || {}, {
     optimize,

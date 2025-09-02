@@ -9,220 +9,438 @@
   - Entry points used by the page: startGame(), initToolsDrawer() (rounds auto-advance after all players submit now)
 -->
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Quiddler Scores</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Tippy.js Tooltip Dependencies -->
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
-    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/animations/scale.css"/>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/tippy.js@6/animations/scale.css"
+    />
     <style>
       /* Align player round input rows: fixed label column + flexible input column */
-      .player-input-row { display: grid; grid-template-columns: 16ch 1fr; gap: 0.5rem; align-items: center; }
-      @media (min-width: 640px) { /* sm */
-        .player-input-row { grid-template-columns: 20ch 1fr; }
+      .player-input-row {
+        display: grid;
+        grid-template-columns: 16ch 1fr;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      @media (min-width: 640px) {
+        /* sm */
+        .player-input-row {
+          grid-template-columns: 20ch 1fr;
+        }
       }
       /* Plain (native-like) tooltip theme for fast tippy tooltips */
-      .tippy-box[data-theme~='plain'] { background:#555; color:#fff; font-size:12px; line-height:1.2; padding:2px 4px; border-radius:2px; border:1px solid #777; box-shadow:none; }
-  .tippy-box[data-theme~='plain'] .tippy-content { padding:0; white-space:pre-line; }
-      .tippy-box[data-theme~='plain'] .tippy-arrow { display:none !important; }
+      .tippy-box[data-theme~="plain"] {
+        background: #555;
+        color: #fff;
+        font-size: 12px;
+        line-height: 1.2;
+        padding: 2px 4px;
+        border-radius: 2px;
+        border: 1px solid #777;
+        box-shadow: none;
+      }
+      .tippy-box[data-theme~="plain"] .tippy-content {
+        padding: 0;
+        white-space: pre-line;
+      }
+      .tippy-box[data-theme~="plain"] .tippy-arrow {
+        display: none !important;
+      }
       /* Mobile collapsible FAB behavior */
       @media (max-width: 639.5px) {
-        #fabButtons[data-collapsed='true'] > button { /* hidden state */
+        #fabButtons[data-collapsed="true"] > button {
+          /* hidden state */
           pointer-events: none;
         }
-        #fabButtons[data-collapsed='true'] > button { opacity:0; transform:translateY(0.5rem) scale(.85); }
-        #fabButtons > button { transition: opacity .22s ease, transform .24s cubic-bezier(.4,.2,.2,1); }
+        #fabButtons[data-collapsed="true"] > button {
+          opacity: 0;
+          transform: translateY(0.5rem) scale(0.85);
+        }
+        #fabButtons > button {
+          transition: opacity 0.22s ease,
+            transform 0.24s cubic-bezier(0.4, 0.2, 0.2, 1);
+        }
         /* Stagger animation using nth-child */
-        #fabButtons[data-collapsed='false'] > button { pointer-events:auto; }
-        #fabButtons[data-collapsed='false'] > button { opacity:1; transform:translateY(0) scale(1); }
-  #fabButtons > button:nth-child(1) { transition-delay:0ms; }
-  #fabButtons > button:nth-child(2) { transition-delay:30ms; }
-  #fabButtons > button:nth-child(3) { transition-delay:60ms; }
-  #fabButtons > button:nth-child(4) { transition-delay:90ms; }
-  #fabButtons[data-collapsed='true'] > button:nth-child(1) { transition-delay:90ms; }
-  #fabButtons[data-collapsed='true'] > button:nth-child(2) { transition-delay:60ms; }
-  #fabButtons[data-collapsed='true'] > button:nth-child(3) { transition-delay:30ms; }
-  #fabButtons[data-collapsed='true'] > button:nth-child(4) { transition-delay:0ms; }
-      /* FIX: When collapsed the container itself was still intercepting taps (its transparent box
+        #fabButtons[data-collapsed="false"] > button {
+          pointer-events: auto;
+        }
+        #fabButtons[data-collapsed="false"] > button {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+        #fabButtons > button:nth-child(1) {
+          transition-delay: 0ms;
+        }
+        #fabButtons > button:nth-child(2) {
+          transition-delay: 30ms;
+        }
+        #fabButtons > button:nth-child(3) {
+          transition-delay: 60ms;
+        }
+        #fabButtons > button:nth-child(4) {
+          transition-delay: 90ms;
+        }
+        #fabButtons[data-collapsed="true"] > button:nth-child(1) {
+          transition-delay: 90ms;
+        }
+        #fabButtons[data-collapsed="true"] > button:nth-child(2) {
+          transition-delay: 60ms;
+        }
+        #fabButtons[data-collapsed="true"] > button:nth-child(3) {
+          transition-delay: 30ms;
+        }
+        #fabButtons[data-collapsed="true"] > button:nth-child(4) {
+          transition-delay: 0ms;
+        }
+        /* FIX: When collapsed the container itself was still intercepting taps (its transparent box
         overlapped right-edge round controls). Disable pointer events on the container too so
         underlying buttons (gear / cancel) remain clickable. */
-      #fabButtons[data-collapsed='true'] { pointer-events:none; }
-      #fabButtons[data-collapsed='false'] { pointer-events:auto; }
-        /* Further collapse so the (now transparent) stacked buttons don't occupy a hit-test box in some mobile browsers */
-        #fabButtons[data-collapsed='true'] {
-          height:0 !important;
-          width:0 !important;
-          overflow:hidden !important;
-          margin:0 !important;
-          padding:0 !important;
+        #fabButtons[data-collapsed="true"] {
+          pointer-events: none;
         }
-        #fabButtons[data-collapsed='true'] > button { display:none !important; }
-        #fabButtons[data-collapsed='false'] > button { display:flex; }
+        #fabButtons[data-collapsed="false"] {
+          pointer-events: auto;
+        }
+        /* Further collapse so the (now transparent) stacked buttons don't occupy a hit-test box in some mobile browsers */
+        #fabButtons[data-collapsed="true"] {
+          height: 0 !important;
+          width: 0 !important;
+          overflow: hidden !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+        #fabButtons[data-collapsed="true"] > button {
+          display: none !important;
+        }
+        #fabButtons[data-collapsed="false"] > button {
+          display: flex;
+        }
       }
-  /* Word Search subtle error styling */
-  .ws-error { border-color:#fda4af !important; background:#fff1f2; box-shadow:0 0 0 1px #fda4af inset; outline:none; }
-  /* On focus show inner red outline + outer soft red ring (fully red-themed) */
-  .ws-error:focus { box-shadow:0 0 0 1px #f87171 inset, 0 0 0 3px #fecaca; outline:none; }
-  /* Warning (non-blocking) styling */
-  .ws-warn { border-color:#fcd34d !important; background:#fffbeb; box-shadow:0 0 0 1px #fcd34d inset; }
-  .ws-warn:focus { box-shadow:0 0 0 1px #fbbf24 inset, 0 0 0 3px #fde68a; }
+      /* Word Search subtle error styling */
+      .ws-error {
+        border-color: #fda4af !important;
+        background: #fff1f2;
+        box-shadow: 0 0 0 1px #fda4af inset;
+        outline: none;
+      }
+      /* On focus show inner red outline + outer soft red ring (fully red-themed) */
+      .ws-error:focus {
+        box-shadow: 0 0 0 1px #f87171 inset, 0 0 0 3px #fecaca;
+        outline: none;
+      }
+      /* Warning (non-blocking) styling */
+      .ws-warn {
+        border-color: #fcd34d !important;
+        background: #fffbeb;
+        box-shadow: 0 0 0 1px #fcd34d inset;
+      }
+      .ws-warn:focus {
+        box-shadow: 0 0 0 1px #fbbf24 inset, 0 0 0 3px #fde68a;
+      }
       /* Generic focus style for any InputValidation-managed input (dataset ivState) when valid */
       input[data-iv-state]:focus:not(.ws-error):not(.ws-warn) {
-        border-color:#93c5fd; /* blue-300 */
-        box-shadow:0 0 0 1px #60a5fa inset, 0 0 0 3px #bfdbfe; /* inner blue-400, outer blue-200 */
-        outline:none;
+        border-color: #93c5fd; /* blue-300 */
+        box-shadow: 0 0 0 1px #60a5fa inset, 0 0 0 3px #bfdbfe; /* inner blue-400, outer blue-200 */
+        outline: none;
       }
-    /* Generic warning focus style */
-    input.ws-warn:focus { box-shadow:0 0 0 1px #fbbf24 inset, 0 0 0 3px #fde68a; outline:none; }
-    /* Ensure error outline remains consistent (already defined above for .ws-error:focus) */
-    /* Word Search add/remove circular buttons */
-    .ws-add, .ws-remove { border-radius:9999px; padding:0; line-height:1; }
-    /* Enforce perfect circle even if line-height/border differences */
-    .ws-add, .ws-remove { aspect-ratio:1/1; }
-    /* Narrow type/sort selects with ellipsis */
-    .ws-type, #searchSort { max-width:5.4rem; width:5.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    /* Safari fallback: hide overflowing option text (no true ellipsis inside dropdown list) */
-    .ws-type option, #searchSort option { max-width:5.0rem; overflow:hidden; text-overflow:ellipsis; }
-    /* Hide native select arrow to reclaim space */
-    .ws-type, #searchSort { appearance:none; -webkit-appearance:none; -moz-appearance:none; background-image:none !important; padding-right:0.4rem; }
-    /* Remove legacy IE arrow */
-    select.ws-type::-ms-expand, select#searchSort::-ms-expand { display:none; }
+      /* Generic warning focus style */
+      input.ws-warn:focus {
+        box-shadow: 0 0 0 1px #fbbf24 inset, 0 0 0 3px #fde68a;
+        outline: none;
+      }
+      /* Ensure error outline remains consistent (already defined above for .ws-error:focus) */
+      /* Word Search add/remove circular buttons */
+      .ws-add,
+      .ws-remove {
+        border-radius: 9999px;
+        padding: 0;
+        line-height: 1;
+      }
+      /* Enforce perfect circle even if line-height/border differences */
+      .ws-add,
+      .ws-remove {
+        aspect-ratio: 1/1;
+      }
+      /* Narrow type/sort selects with ellipsis */
+      .ws-type,
+      #searchSort {
+        max-width: 5.4rem;
+        width: 5.4rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      /* Safari fallback: hide overflowing option text (no true ellipsis inside dropdown list) */
+      .ws-type option,
+      #searchSort option {
+        max-width: 5rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      /* Hide native select arrow to reclaim space */
+      .ws-type,
+      #searchSort {
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        background-image: none !important;
+        padding-right: 0.4rem;
+      }
+      /* Remove legacy IE arrow */
+      select.ws-type::-ms-expand,
+      select#searchSort::-ms-expand {
+        display: none;
+      }
     </style>
-</head>
-<body class="bg-gray-100 p-4">
+  </head>
+  <body class="bg-gray-100 p-4">
     <div class="max-w-3xl mx-auto bg-white shadow-md rounded-lg p-6">
-        <div class="mb-4 text-center">
-          <h1 class="text-2xl font-bold inline-flex items-center gap-3 justify-center w-full">Quiddler Scores</h1>
-          <!-- New Game button removed; now a floating action button with the tool buttons -->
+      <div class="mb-4 text-center">
+        <h1
+          class="text-2xl font-bold inline-flex items-center gap-3 justify-center w-full"
+        >
+          Quiddler Scores
+        </h1>
+        <!-- New Game button removed; now a floating action button with the tool buttons -->
+      </div>
+
+      <!-- Pre-game config (visible until a game starts) -->
+      <div id="preGameConfig" class="mb-4">
+        <!-- Player names -->
+        <div class="flex items-center gap-2 mb-2">
+          <label for="playersInput" class="text-gray-700 whitespace-nowrap">
+            Player names
+          </label>
+          <input
+            id="playersInput"
+            class="flex-1 p-2 border rounded"
+            placeholder="e.g., Alice, Bob, Charlie"
+          />
         </div>
 
-        <!-- Pre-game config (visible until a game starts) -->
-        <div id="preGameConfig" class="mb-4">
-            <!-- Player names -->
-            <div class="flex items-center gap-2 mb-2">
-              <label for="playersInput" class="text-gray-700 whitespace-nowrap">Player names</label>
-              <input id="playersInput" class="flex-1 p-2 border rounded" placeholder="e.g., Alice, Bob, Charlie">
-            </div>
-
-            <!-- Bonus settings -->
-            <div class="mt-2 space-y-2">
-                <div class="flex items-center flex-wrap gap-2">
-                  <span>Rounds from</span>
-                  <input id="startCards" type="number" min="3" max="30" value="3" class="w-16 border rounded p-1 text-right" aria-label="Starting number of cards">
-                  <span>to</span>
-                  <input id="endCards" type="number" min="1" max="30" value="10" class="w-16 border rounded p-1 text-right" aria-label="Ending number of cards">
-                  <span>cards</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <input type="checkbox" id="longestWordBonus">
-                    <label for="longestWordBonus">Longest Word Bonus 🦒</label>
-                    <input id="longestWordPoints" type="number" value="10" min="0"
-                        class="w-16 border rounded p-1">
-                    <span>points</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <input type="checkbox" id="mostWordsBonus">
-                    <label for="mostWordsBonus">Most Words Bonus 🥒</label>
-                    <input id="mostWordsPoints" type="number" value="10" min="0"
-                        class="w-16 border rounded p-1">
-                    <span>points</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <input type="checkbox" id="dictApiAlso">
-                    <label for="dictApiAlso">Validate words with
-                      <a href="https://dictionaryapi.dev/" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">Free Dictionary API</a>
-                      <span class="text-gray-400 text-xs italic">(in addition to Collins '19)</span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Start Game button -->
-            <button id="gameGo" class="mt-3 bg-blue-500 text-white py-2 px-4 rounded">Start Game</button>
+        <!-- Bonus settings -->
+        <div class="mt-2 space-y-2">
+          <div class="flex items-center flex-wrap gap-2">
+            <span>Rounds from</span>
+            <input
+              id="startCards"
+              type="number"
+              min="3"
+              max="30"
+              value="3"
+              class="w-16 border rounded p-1 text-right"
+              aria-label="Starting number of cards"
+            />
+            <span>to</span>
+            <input
+              id="endCards"
+              type="number"
+              min="1"
+              max="30"
+              value="10"
+              class="w-16 border rounded p-1 text-right"
+              aria-label="Ending number of cards"
+            />
+            <span>cards</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="longestWordBonus" />
+            <label for="longestWordBonus">Longest Word Bonus 🦒</label>
+            <input
+              id="longestWordPoints"
+              type="number"
+              value="10"
+              min="0"
+              class="w-16 border rounded p-1"
+            />
+            <span>points</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="mostWordsBonus" />
+            <label for="mostWordsBonus">Most Words Bonus 🥒</label>
+            <input
+              id="mostWordsPoints"
+              type="number"
+              value="10"
+              min="0"
+              class="w-16 border rounded p-1"
+            />
+            <span>points</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input type="checkbox" id="dictApiAlso" />
+            <label for="dictApiAlso">
+              Validate words with
+              <a
+                href="https://dictionaryapi.dev/"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="text-blue-600 hover:underline"
+              >
+                Free Dictionary API
+              </a>
+              <span class="text-gray-400 text-xs italic">
+                (in addition to Collins '19)
+              </span>
+            </label>
+          </div>
         </div>
 
-        <!-- Game Area -->
-        <div id="gameArea" class="hidden">
-            <!-- Running Totals now embedded with internal header row -->
-            <div id="scoreTotals" class="mb-2 flex justify-center">
-              <div class="inline-block w-full max-w-[20rem] sm:max-w-[21rem] rounded-xl border border-gray-200 bg-white/80 shadow-sm px-0 py-4" aria-label="Player running totals">
-                <!-- Rows (header + players) injected by updateScores() -->
-              </div>
-            </div>
+        <!-- Start Game button -->
+        <button
+          id="gameGo"
+          class="mt-3 bg-blue-500 text-white py-2 px-4 rounded"
+        >
+          Start Game
+        </button>
+      </div>
 
-            <div id="roundHeaderBar" class="flex items-center gap-3 mb-3 mt-7">
-              <h2 class="font-semibold text-xl leading-none flex items-center" id="roundHeader"></h2>
-              <button id="submitRoundBtn" aria-label="Submit current plays" class="inline-flex items-center gap-1 justify-center h-6 px-3 rounded-full border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition disabled:opacity-60 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-sm font-medium translate-y-[1px]" type="button">
-                <span class="select-none">Submit</span>
-                <!-- Inline copy of icons/play.svg for exact match -->
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="w-4 h-4">
-                  <path fill-rule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clip-rule="evenodd" />
-                </svg>
-              </button>
-              <button id="skipRoundBtn" aria-label="Skip round" class="hidden inline-flex items-center gap-1 justify-center h-6 px-3 rounded-full bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 hover:border-gray-400 active:bg-gray-300 active:border-gray-400 transition disabled:opacity-60 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-sm font-medium translate-y-[1px]" type="button">
-                <span class="select-none">Skip</span>
-                <!-- Inline copy of icons/forward.svg for exact match -->
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" data-slot="icon" class="w-4 h-4">
-                  <path d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256l-7.108-4.061C13.555 6.346 12 7.249 12 8.689v2.34L5.055 7.061Z" />
-                </svg>
-              </button>
-            </div>
-
-            <!-- Player round inputs -->
-            <div id="scoreInputs"></div>
-
-            <!-- Round details -->
-            <h3 id="previousRoundsHeader" class="font-semibold text-xl mt-6 hidden">Previous Rounds</h3>
-            <div id="previousRoundsHint" class="text-sm text-gray-500 mt-1 hidden">
-              Click a word chit to toggle a challenge. Click again to undo.
-            </div>
-            <div id="previousRounds" class="mt-2"></div>
+      <!-- Game Area -->
+      <div id="gameArea" class="hidden">
+        <!-- Running Totals now embedded with internal header row -->
+        <div id="scoreTotals" class="mb-2 flex justify-center">
+          <div
+            class="inline-block w-full max-w-[20rem] sm:max-w-[21rem] rounded-xl border border-gray-200 bg-white/80 shadow-sm px-0 py-4"
+            aria-label="Player running totals"
+          >
+            <!-- Rows (header + players) injected by updateScores() -->
+          </div>
         </div>
+
+        <div id="roundHeaderBar" class="flex items-center gap-3 mb-3 mt-7">
+          <h2
+            class="font-semibold text-xl leading-none flex items-center"
+            id="roundHeader"
+          ></h2>
+          <button
+            id="submitRoundBtn"
+            aria-label="Submit current plays"
+            class="inline-flex items-center gap-1 justify-center h-6 px-3 rounded-full border border-blue-300 text-blue-600 bg-blue-50 hover:bg-blue-100 active:bg-blue-200 transition disabled:opacity-60 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-sm font-medium translate-y-[1px]"
+            type="button"
+          >
+            <span class="select-none">Submit</span>
+            <!-- Inline copy of icons/play.svg for exact match -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+              class="w-4 h-4"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </button>
+          <button
+            id="skipRoundBtn"
+            aria-label="Skip round"
+            class="hidden inline-flex items-center gap-1 justify-center h-6 px-3 rounded-full bg-gray-100 text-gray-700 border border-gray-300 hover:bg-gray-200 hover:border-gray-400 active:bg-gray-300 active:border-gray-400 transition disabled:opacity-60 leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 text-sm font-medium translate-y-[1px]"
+            type="button"
+          >
+            <span class="select-none">Skip</span>
+            <!-- Inline copy of icons/forward.svg for exact match -->
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+              data-slot="icon"
+              class="w-4 h-4"
+            >
+              <path
+                d="M5.055 7.06C3.805 6.347 2.25 7.25 2.25 8.69v8.122c0 1.44 1.555 2.343 2.805 1.628L12 14.471v2.34c0 1.44 1.555 2.343 2.805 1.628l7.108-4.061c1.26-.72 1.26-2.536 0-3.256l-7.108-4.061C13.555 6.346 12 7.249 12 8.689v2.34L5.055 7.061Z"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <!-- Player round inputs -->
+        <div id="scoreInputs"></div>
+
+        <!-- Round details -->
+        <h3 id="previousRoundsHeader" class="font-semibold text-xl mt-6 hidden">
+          Previous Rounds
+        </h3>
+        <div id="previousRoundsHint" class="text-sm text-gray-500 mt-1 hidden">
+          Click a word chit to toggle a challenge. Click again to undo.
+        </div>
+        <div id="previousRounds" class="mt-2"></div>
+      </div>
     </div>
 
     <!-- Floating Action Buttons (desktop: always visible vertical stack; mobile: collapsible) -->
-    <div id="fabWrap" class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+    <div
+      id="fabWrap"
+      class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3"
+    >
       <!-- Actual action buttons group -->
-      <div id="fabButtons" class="flex flex-col gap-3 sm:flex" data-collapsed="true">
-  <button id="optToolBtn"
-    class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
-    aria-label="Solver (⌘/Ctrl+O)"
-    data-tippy-content="Solver (⌘/Ctrl+O)"
-    type="button">
-    <span data-icon="solver" data-icon-classes="w-7 h-7 invert"></span>
-  </button>
-  <button id="dictToolBtn"
-    class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
-    aria-label="Dictionary (⌘/Ctrl+I)"
-    data-tippy-content="Dictionary (⌘/Ctrl+I)"
-    type="button">
-    <span data-icon="dictionary" data-icon-classes="w-7 h-7 invert"></span>
-  </button>
+      <div
+        id="fabButtons"
+        class="flex flex-col gap-3 sm:flex"
+        data-collapsed="true"
+      >
+        <button
+          id="optToolBtn"
+          class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
+          aria-label="Solver (⌘/Ctrl+O)"
+          data-tippy-content="Solver (⌘/Ctrl+O)"
+          type="button"
+        >
+          <span data-icon="solver" data-icon-classes="w-7 h-7 invert"></span>
+        </button>
+        <button
+          id="dictToolBtn"
+          class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
+          aria-label="Dictionary (⌘/Ctrl+I)"
+          data-tippy-content="Dictionary (⌘/Ctrl+I)"
+          type="button"
+        >
+          <span
+            data-icon="dictionary"
+            data-icon-classes="w-7 h-7 invert"
+          ></span>
+        </button>
 
-        <button id="searchToolBtn"
+        <button
+          id="searchToolBtn"
           class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
           aria-label="Search (⌘/Ctrl+K)"
           data-tippy-content="Search (⌘/Ctrl+K)"
-          type="button">
+          type="button"
+        >
           <span data-icon="search" data-icon-classes="w-7 h-7 invert"></span>
         </button>
 
         <!-- New Game floating action button -->
-  <button id="newGameBtn"
-    class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
-    aria-label="New Game (⌘/Ctrl+Enter)"
-    data-tippy-content="New Game (⌘/Ctrl+Enter)"
-    type="button">
-    <span data-icon="refresh" data-icon-classes="w-7 h-7 invert"></span>
-  </button>
+        <button
+          id="newGameBtn"
+          class="w-14 h-14 rounded-full bg-gray-500 hover:bg-gray-600 flex items-center justify-center shadow-lg transition transform opacity-100"
+          aria-label="New Game (⌘/Ctrl+Enter)"
+          data-tippy-content="New Game (⌘/Ctrl+Enter)"
+          type="button"
+        >
+          <span data-icon="refresh" data-icon-classes="w-7 h-7 invert"></span>
+        </button>
       </div>
 
       <!-- Mobile toggle button (hidden >= sm) -->
-      <button id="fabToggle" aria-label="Actions" aria-expanded="false"
-              class="sm:hidden w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
-  <span data-icon="collapse" data-icon-classes="w-7 h-7 invert"></span>
+      <button
+        id="fabToggle"
+        aria-label="Actions"
+        aria-expanded="false"
+        class="sm:hidden w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+      >
+        <span data-icon="collapse" data-icon-classes="w-7 h-7 invert"></span>
         <!-- Upward arrow icon
         <svg id="fabToggleIcon" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 5.25a.75.75 0 0 1 .53.22l7 7a.75.75 0 1 1-1.06 1.06L12 7.81l-6.47 5.72a.75.75 0 1 1-1-1.12l7-6.2a.75.75 0 0 1 .47-.16Z"/>
@@ -231,45 +449,83 @@
     </div>
 
     <!-- Backdrop -->
-    <div id="toolsBackdrop"
-         class="fixed inset-0 bg-black/30 z-40 hidden opacity-0 transition-opacity"></div>
+    <div
+      id="toolsBackdrop"
+      class="fixed inset-0 bg-black/30 z-40 hidden opacity-0 transition-opacity"
+    ></div>
 
     <!-- Right Drawer -->
-    <aside id="toolsDrawer"
-           class="fixed right-0 top-0 h-full w-[24rem] max-w-[90vw] bg-white z-50 shadow-xl border-l border-gray-200
-                  transform translate-x-full transition-transform">
+    <aside
+      id="toolsDrawer"
+      class="fixed right-0 top-0 h-full w-[24rem] max-w-[90vw] bg-white z-50 shadow-xl border-l border-gray-200 transform translate-x-full transition-transform"
+    >
       <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+      <div
+        class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50"
+      >
         <div class="font-semibold text-gray-800">Quiddler Tools</div>
-        <button id="toolsCloseBtn" class="text-gray-500 hover:text-gray-700 text-xl leading-none">✕</button>
+        <button
+          id="toolsCloseBtn"
+          class="text-gray-500 hover:text-gray-700 text-xl leading-none"
+        >
+          ✕
+        </button>
       </div>
 
       <!-- Tabs -->
       <div class="px-4 pt-3">
-        <div class="flex text-sm rounded-lg overflow-hidden border border-gray-200 w-full">
-          <button id="toolsTabDict" class="flex-1 px-3 py-2 bg-white text-gray-900 text-center flex items-center justify-center gap-1">
-            <span data-icon="dictionary" data-icon-classes="w-4 h-4 opacity-70"></span>
+        <div
+          class="flex text-sm rounded-lg overflow-hidden border border-gray-200 w-full"
+        >
+          <button
+            id="toolsTabDict"
+            class="flex-1 px-3 py-2 bg-white text-gray-900 text-center flex items-center justify-center gap-1"
+          >
+            <span
+              data-icon="dictionary"
+              data-icon-classes="w-4 h-4 opacity-70"
+            ></span>
             <span>Dictionary</span>
           </button>
-            <button id="toolsTabSearch" class="flex-1 px-3 py-2 bg-gray-100 text-gray-600 text-center flex items-center justify-center gap-1">
-            <span data-icon="search" data-icon-classes="w-4 h-4 opacity-60"></span>
+          <button
+            id="toolsTabSearch"
+            class="flex-1 px-3 py-2 bg-gray-100 text-gray-600 text-center flex items-center justify-center gap-1"
+          >
+            <span
+              data-icon="search"
+              data-icon-classes="w-4 h-4 opacity-60"
+            ></span>
             <span>Search</span>
           </button>
-          <button id="toolsTabPlay" class="flex-1 px-3 py-2 bg-gray-100 text-gray-600 text-center flex items-center justify-center gap-1">
-            <span data-icon="solver" data-icon-classes="w-4 h-4 opacity-60"></span>
+          <button
+            id="toolsTabPlay"
+            class="flex-1 px-3 py-2 bg-gray-100 text-gray-600 text-center flex items-center justify-center gap-1"
+          >
+            <span
+              data-icon="solver"
+              data-icon-classes="w-4 h-4 opacity-60"
+            ></span>
             <span>Solver</span>
           </button>
         </div>
       </div>
 
       <!-- Panels -->
-      <div class="p-4 flex flex-col gap-4 overflow-y-auto h-[calc(100%-4.5rem-3rem)]">
+      <div
+        class="p-4 flex flex-col gap-4 overflow-y-auto h-[calc(100%-4.5rem-3rem)]"
+      >
         <!-- Dictionary panel -->
         <section id="toolsPanelDict">
-
-          <div id="dictEmpty" class="mb-3 text-sm text-gray-500">Type a word to look up.</div>
+          <div id="dictEmpty" class="mb-3 text-sm text-gray-500">
+            Type a word to look up.
+          </div>
           <div class="flex items-center gap-2 mb-3">
-            <input id="dictInput" type="text" placeholder="Type a word…" class="flex-1 border rounded-lg px-3 py-2 outline-none focus:ring focus:ring-blue-200"/>
+            <input
+              id="dictInput"
+              type="text"
+              placeholder="Type a word…"
+              class="flex-1 border rounded-lg px-3 py-2 outline-none focus:ring focus:ring-blue-200"
+            />
           </div>
 
           <!-- Dictionary content -->
@@ -277,52 +533,85 @@
             <!-- Local definition -->
             <div id="dictLocalWrap" class="hidden">
               <div class="flex items-center justify-between mb-1">
-                <div class="text-xs uppercase tracking-wide text-gray-500">Collins ’19</div>
-                <button id="dictLocalToggle" type="button" class="text-[11px] text-blue-600 hover:underline focus:outline-none">Collapse</button>
+                <div class="text-xs uppercase tracking-wide text-gray-500">
+                  Collins ’19
+                </div>
+                <button
+                  id="dictLocalToggle"
+                  type="button"
+                  class="text-[11px] text-blue-600 hover:underline focus:outline-none"
+                >
+                  Collapse
+                </button>
               </div>
               <div id="dictLocal" class="text-sm text-gray-800"></div>
             </div>
             <!-- Online definition -->
             <div id="dictOnlineWrap" class="hidden">
               <div class="flex items-center justify-between mb-1">
-                <div class="text-xs uppercase tracking-wide text-gray-500">Free Dictionary API</div>
-                <button id="dictOnlineToggle" type="button" class="text-[11px] text-blue-600 hover:underline focus:outline-none">Collapse</button>
+                <div class="text-xs uppercase tracking-wide text-gray-500">
+                  Free Dictionary API
+                </div>
+                <button
+                  id="dictOnlineToggle"
+                  type="button"
+                  class="text-[11px] text-blue-600 hover:underline focus:outline-none"
+                >
+                  Collapse
+                </button>
               </div>
               <div id="dictOnline" class="text-sm text-gray-800"></div>
             </div>
             <!-- Loading -->
-            <div id="dictOnlineLoading" class="hidden mt-2 text-gray-500 text-sm"><span>Looking up…</span></div>
+            <div
+              id="dictOnlineLoading"
+              class="hidden mt-2 text-gray-500 text-sm"
+            >
+              <span>Looking up…</span>
+            </div>
           </div>
-
         </section>
 
         <!-- Play Helper panel -->
         <section id="toolsPanelPlay" class="hidden">
           <!-- Tiles -->
           <div id="tilesEmpty" class="text-sm text-gray-500 mb-2">
-            Enter your hand, using parentheses around digraphs.<br>Tip: spaces and '-' will be ignored.
+            Enter your hand, using parentheses around digraphs.
+            <br />
+            Tip: spaces and '-' will be ignored.
           </div>
 
           <!-- Tiles input -->
           <div class="mt-2">
-       <input id="tilesInput" type="text" placeholder="e.g. (qu)i ck(er)"
-         class="w-full border rounded-lg px-3 py-2 outline-none"/>
+            <input
+              id="tilesInput"
+              type="text"
+              placeholder="e.g. (qu)i ck(er)"
+              class="w-full border rounded-lg px-3 py-2 outline-none"
+            />
           </div>
 
           <!-- New: "Do not discard a card" -->
           <div class="mt-4">
             <label class="inline-flex items-center gap-2">
-              <input id="optNoDiscard" type="checkbox" class="rounded">
+              <input id="optNoDiscard" type="checkbox" class="rounded" />
               <span class="text-sm">Do not discard any card</span>
             </label>
           </div>
 
           <div class="mt-3">
             <label class="flex flex-wrap items-center gap-2">
-              <input id="optApiFilter" type="checkbox" class="rounded">
+              <input id="optApiFilter" type="checkbox" class="rounded" />
               <span class="text-sm">
-                Use only words from the 
-                <a href="https://dictionaryapi.dev/" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">Free Dictionary API</a>
+                Use only words from the
+                <a
+                  href="https://dictionaryapi.dev/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="text-blue-600 hover:underline"
+                >
+                  Free Dictionary API
+                </a>
               </span>
             </label>
           </div>
@@ -332,96 +621,234 @@
           <!-- Current Longest / Current Most -->
           <div id="currentBonuses" class="grid grid-cols-2 gap-3 hidden mt-4">
             <div>
-              <label for="optCurrentLongest" class="block text-sm font-medium text-gray-700 mb-1">Longest word to beat</label>
-              <input id="optCurrentLongest" type="number" min="0" step="1" value="0"
-                     class="w-full border rounded-lg px-3 py-2 text-right outline-none focus:ring focus:ring-blue-200"/>
+              <label
+                for="optCurrentLongest"
+                class="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Longest word to beat
+              </label>
+              <input
+                id="optCurrentLongest"
+                type="number"
+                min="0"
+                step="1"
+                value="0"
+                class="w-full border rounded-lg px-3 py-2 text-right outline-none focus:ring focus:ring-blue-200"
+              />
             </div>
             <div>
-              <label for="optCurrentMost" class="block text-sm font-medium text-gray-700 mb-1">Most words to beat</label>
-              <input id="optCurrentMost" type="number" min="0" step="1" value="0"
-                     class="w-full border rounded-lg px-3 py-2 text-right outline-none focus:ring focus:ring-blue-200"/>
+              <label
+                for="optCurrentMost"
+                class="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Most words to beat
+              </label>
+              <input
+                id="optCurrentMost"
+                type="number"
+                min="0"
+                step="1"
+                value="0"
+                class="w-full border rounded-lg px-3 py-2 text-right outline-none focus:ring focus:ring-blue-200"
+              />
             </div>
           </div>
 
           <!-- Actions -->
           <div class="mt-5 flex items-center gap-3 justify-end">
-            <button id="playReset" class="inline-flex items-center justify-center h-9 px-4 rounded-md border border-gray-400/50 bg-gray-400/10 text-gray-700 hover:bg-gray-400/20 active:bg-gray-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 disabled:opacity-50 transition text-sm font-medium" type="button">Reset</button>
-            <button id="playGo" class="inline-flex items-center gap-2 justify-center h-9 px-4 rounded-md border border-blue-600/40 bg-blue-600/10 text-blue-700 hover:bg-blue-600/20 active:bg-blue-600/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-50 transition text-sm font-medium" type="button"><span id="playGoLabel">Solve</span></button>
+            <button
+              id="playReset"
+              class="inline-flex items-center justify-center h-9 px-4 rounded-md border border-gray-400/50 bg-gray-400/10 text-gray-700 hover:bg-gray-400/20 active:bg-gray-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 disabled:opacity-50 transition text-sm font-medium"
+              type="button"
+            >
+              Reset
+            </button>
+            <button
+              id="playGo"
+              class="inline-flex items-center gap-2 justify-center h-9 px-4 rounded-md border border-blue-600/40 bg-blue-600/10 text-blue-700 hover:bg-blue-600/20 active:bg-blue-600/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-50 transition text-sm font-medium"
+              type="button"
+            >
+              <span id="playGoLabel">Solve</span>
+            </button>
           </div>
 
           <!-- Results -->
           <div id="playResult" class="mt-2 hidden"></div>
-
         </section>
         <!-- Word Search panel -->
-        <section id="toolsPanelSearch" class="hidden flex flex-col flex-1 min-h-0">
+        <section
+          id="toolsPanelSearch"
+          class="hidden flex flex-col flex-1 min-h-0"
+        >
           <div class="flex items-center flex-wrap gap-3 mb-4">
             <div class="text-sm text-gray-500">
-              Tip: Use <span id="wsMetaSet" class="cursor-help border-b border-dotted border-gray-400">. ? * +</span> wildcards
+              Tip: Use
+              <span
+                id="wsMetaSet"
+                class="cursor-help border-b border-dotted border-gray-400"
+              >
+                . ? * +
+              </span>
+              wildcards
             </div>
-            <span class="text-sm text-gray-500 flex items-center gap-1 select-none">
-              (<label class="inline-flex items-center gap-1 cursor-pointer">
-                <input type="checkbox" id="wsDigraphUnits" class="rounded w-3 h-3 accent-gray-500 focus:ring-0 focus:outline-none" checked>
+            <span
+              class="text-sm text-gray-500 flex items-center gap-1 select-none"
+            >
+              (
+              <label class="inline-flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  id="wsDigraphUnits"
+                  class="rounded w-3 h-3 accent-gray-500 focus:ring-0 focus:outline-none"
+                  checked
+                />
                 <span class="text-sm text-gray-500">digraphs as tiles</span>
-              </label>)
+              </label>
+              )
             </span>
           </div>
           <div id="searchRows" class="mb-2"></div>
           <!-- Inline sort control appears in results -->
           <div class="mt-2 flex items-center gap-3 justify-end">
-            <button id="searchReset" class="inline-flex items-center justify-center h-9 px-4 rounded-md border border-gray-400/50 bg-gray-400/10 text-gray-700 hover:bg-gray-400/20 active:bg-gray-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 disabled:opacity-50 transition text-sm font-medium" type="button">Reset</button>
-            <button id="searchGo" class="inline-flex items-center justify-center h-9 px-4 rounded-md border border-blue-600/40 bg-blue-600/10 text-blue-700 hover:bg-blue-600/20 active:bg-blue-600/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-50 transition text-sm font-medium" type="button">Search</button>
+            <button
+              id="searchReset"
+              class="inline-flex items-center justify-center h-9 px-4 rounded-md border border-gray-400/50 bg-gray-400/10 text-gray-700 hover:bg-gray-400/20 active:bg-gray-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 disabled:opacity-50 transition text-sm font-medium"
+              type="button"
+            >
+              Reset
+            </button>
+            <button
+              id="searchGo"
+              class="inline-flex items-center justify-center h-9 px-4 rounded-md border border-blue-600/40 bg-blue-600/10 text-blue-700 hover:bg-blue-600/20 active:bg-blue-600/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/40 disabled:opacity-50 transition text-sm font-medium"
+              type="button"
+            >
+              Search
+            </button>
             <span id="searchStatus" class="text-sm text-gray-500 hidden"></span>
           </div>
-          <div id="searchResult" class="mt-2 text-sm hidden flex-1 min-h-0 flex flex-col"></div>
+          <div
+            id="searchResult"
+            class="mt-2 text-sm hidden flex-1 min-h-0 flex flex-col"
+          ></div>
           <!-- Placeholder area for future Run/results -->
         </section>
       </div>
     </aside>
 
     <!-- Keyboard Shortcuts Modal (restored) -->
-    <div id="shortcutModal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby="shortcutModalTitle">
+    <div
+      id="shortcutModal"
+      class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shortcutModalTitle"
+    >
       <div class="bg-white rounded-lg shadow-lg p-5 w-[420px] text-sm relative">
         <div class="flex items-start mb-3">
-          <h3 id="shortcutModalTitle" class="font-semibold flex-1">Keyboard Shortcuts</h3>
-          <button id="shortcutCloseBtn" class="text-gray-500 hover:text-gray-700 text-xl leading-none -mt-1 -mr-1" aria-label="Close">✕</button>
+          <h3 id="shortcutModalTitle" class="font-semibold flex-1">
+            Keyboard Shortcuts
+          </h3>
+          <button
+            id="shortcutCloseBtn"
+            class="text-gray-500 hover:text-gray-700 text-xl leading-none -mt-1 -mr-1"
+            aria-label="Close"
+          >
+            ✕
+          </button>
         </div>
         <ul class="space-y-1 leading-5">
-          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + Enter</span> New game</li>
-          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + E</span> End game early</li>
-          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + .</span> Skip current round</li>
-          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + I</span> Open dictionary</li>
-          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + O</span> Open solver</li>
-          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + K</span> Open search</li>
-          <li><span class="font-mono bg-gray-100 px-1 py-0.5 rounded">Ctrl/Cmd + /</span> Toggle this panel</li>
+          <li>
+            <span class="font-mono bg-gray-100 px-1 py-0.5 rounded">
+              Ctrl/Cmd + Enter
+            </span>
+            New game
+          </li>
+          <li>
+            <span class="font-mono bg-gray-100 px-1 py-0.5 rounded">
+              Ctrl/Cmd + E
+            </span>
+            End game early
+          </li>
+          <li>
+            <span class="font-mono bg-gray-100 px-1 py-0.5 rounded">
+              Ctrl/Cmd + .
+            </span>
+            Skip current round
+          </li>
+          <li>
+            <span class="font-mono bg-gray-100 px-1 py-0.5 rounded">
+              Ctrl/Cmd + I
+            </span>
+            Open dictionary
+          </li>
+          <li>
+            <span class="font-mono bg-gray-100 px-1 py-0.5 rounded">
+              Ctrl/Cmd + O
+            </span>
+            Open solver
+          </li>
+          <li>
+            <span class="font-mono bg-gray-100 px-1 py-0.5 rounded">
+              Ctrl/Cmd + K
+            </span>
+            Open search
+          </li>
+          <li>
+            <span class="font-mono bg-gray-100 px-1 py-0.5 rounded">
+              Ctrl/Cmd + /
+            </span>
+            Toggle this panel
+          </li>
         </ul>
         <!-- Bottom cache clear section with concise labels -->
         <div class="mt-5 pt-3 border-t border-gray-100">
           <div class="flex gap-2 items-center justify-start text-[11px]">
             <span class="text-gray-500 select-none">Clear cache:</span>
-            <button id="clearDictCacheBtn" class="px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600" data-tippy-content="Clears cached dictionary information used for faster lookups">Dictionary</button>
-            <button id="clearGameCacheBtn" class="px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600" data-tippy-content="Clears cached game state used to persist plays after page reload">Game</button>
+            <button
+              id="clearDictCacheBtn"
+              class="px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
+              data-tippy-content="Clears cached dictionary information used for faster lookups"
+            >
+              Dictionary
+            </button>
+            <button
+              id="clearGameCacheBtn"
+              class="px-2 py-0.5 rounded bg-gray-100 hover:bg-gray-200 text-gray-600"
+              data-tippy-content="Clears cached game state used to persist plays after page reload"
+            >
+              Game
+            </button>
           </div>
-          <div id="cacheClearFeedback" class="mt-2 text-[11px] text-emerald-600 text-right hidden"></div>
+          <div
+            id="cacheClearFeedback"
+            class="mt-2 text-[11px] text-emerald-600 text-right hidden"
+          ></div>
         </div>
       </div>
     </div>
 
     <!-- Subtle footer hint -->
     <div class="mt-6 text-center text-[11px] text-gray-400 select-none">
-      Press <span class="font-mono">Cmd+/</span> (Ctrl+/) for shortcuts
-      <button onclick="window.QuiddlerToggleShortcuts?.()" class="ml-2 underline decoration-dotted">help</button>
+      Press
+      <span class="font-mono">Cmd+/</span>
+      (Ctrl+/) for shortcuts
+      <button
+        onclick="window.QuiddlerToggleShortcuts?.()"
+        class="ml-2 underline decoration-dotted"
+      >
+        help
+      </button>
     </div>
 
     <!-- Core data and helpers -->
     <script src="card_scores.js"></script>
     <script src="collins_dictionary.js"></script>
     <script src="collins_parsing.js"></script>
-  <script src="icons.js"></script>
-  <!-- (Removed common_lemmas.js; frequency list unused) -->
-  <script src="input_validation.js"></script>
+    <script src="icons.js"></script>
+    <!-- (Removed common_lemmas.js; frequency list unused) -->
+    <script src="input_validation.js"></script>
 
-  <!-- (Removed wink-lemmatizer; no longer needed) -->
+    <!-- (Removed wink-lemmatizer; no longer needed) -->
 
     <!-- Split app scripts -->
     <script src="dictionary_api.js"></script>
@@ -430,65 +857,103 @@
     <script src="optimizer.js"></script>
     <script src="game.js"></script>
     <script src="tools_drawer.js"></script>
-  <script src="word_search.js"></script>
+    <script src="word_search.js"></script>
 
     <!-- Bootstrap -->
     <script>
       // Initialize the tools drawer and button tooltips
-      window.QuiddlerTools?.init ? window.QuiddlerTools.init() : initToolsDrawer();
+      window.QuiddlerTools?.init
+        ? window.QuiddlerTools.init()
+        : initToolsDrawer();
 
       // Wire buttons to namespaced APIs (fallback to globals during migration)
-      document.getElementById('gameGo')?.addEventListener('click', () => {
+      document.getElementById("gameGo")?.addEventListener("click", () => {
         window.QuiddlerGame?.startGame?.();
       });
-      document.getElementById('newGameBtn')?.addEventListener('click', () => {
+      document.getElementById("newGameBtn")?.addEventListener("click", () => {
         window.QuiddlerGame?.resetToPreGame?.();
       });
-      document.getElementById('skipRoundBtn')?.addEventListener('click', () => {
+      document.getElementById("skipRoundBtn")?.addEventListener("click", () => {
         window.QuiddlerGame?.skipRound?.();
       });
 
       // Cache clearing buttons (shortcut modal)
-      (function(){
-        const feedback = document.getElementById('cacheClearFeedback');
-        function showMsg(msg){ if(!feedback) return; feedback.textContent = msg; feedback.classList.remove('hidden'); setTimeout(()=>feedback.classList.add('hidden'), 2200); }
-        document.getElementById('clearGameCacheBtn')?.addEventListener('click', () => {
-          window.QuiddlerGame?.clearGameCacheOnly?.();
-          showMsg('Game cache cleared');
-        });
-        document.getElementById('clearDictCacheBtn')?.addEventListener('click', () => {
-          window.clearFDCache?.();
-          showMsg('Dictionary cache cleared');
-        });
+      (function () {
+        const feedback = document.getElementById("cacheClearFeedback");
+        function showMsg(msg) {
+          if (!feedback) return;
+          feedback.textContent = msg;
+          feedback.classList.remove("hidden");
+          setTimeout(() => feedback.classList.add("hidden"), 2200);
+        }
+        document
+          .getElementById("clearGameCacheBtn")
+          ?.addEventListener("click", () => {
+            window.QuiddlerGame?.clearGameCacheOnly?.();
+            showMsg("Game cache cleared");
+          });
+        document
+          .getElementById("clearDictCacheBtn")
+          ?.addEventListener("click", () => {
+            window.clearFDCache?.();
+            showMsg("Dictionary cache cleared");
+          });
         // Initialize tippy tooltips for cache buttons (faster than native title)
         if (window.tippy) {
           // Use unified plain tooltip style for cache buttons
-          const commonOpts = { placement:'bottom', animation:'none', delay:[500,0], theme:'plain', arrow:false, offset:[0,6] };
-          tippy('#clearDictCacheBtn', commonOpts);
-          tippy('#clearGameCacheBtn', commonOpts);
+          const commonOpts = {
+            placement: "bottom",
+            animation: "none",
+            delay: [500, 0],
+            theme: "plain",
+            arrow: false,
+            offset: [0, 6],
+          };
+          tippy("#clearDictCacheBtn", commonOpts);
+          tippy("#clearGameCacheBtn", commonOpts);
         }
       })();
 
       // REMOVED skip button tooltip init (text label provides affordance)
 
       // Simplified shortcut modal toggle (single source of truth)
-      (function(){
-        const modal = document.getElementById('shortcutModal');
-        function show(){ if(!modal) return; modal.classList.remove('hidden'); modal.classList.add('flex'); }
-        function hide(){ if(!modal) return; modal.classList.add('hidden'); modal.classList.remove('flex'); }
-        function toggle(force){
-          if(!modal) return;
-          const doShow = force === true ? true : force === false ? false : modal.classList.contains('hidden');
+      (function () {
+        const modal = document.getElementById("shortcutModal");
+        function show() {
+          if (!modal) return;
+          modal.classList.remove("hidden");
+          modal.classList.add("flex");
+        }
+        function hide() {
+          if (!modal) return;
+          modal.classList.add("hidden");
+          modal.classList.remove("flex");
+        }
+        function toggle(force) {
+          if (!modal) return;
+          const doShow =
+            force === true
+              ? true
+              : force === false
+              ? false
+              : modal.classList.contains("hidden");
           doShow ? show() : hide();
         }
         window.QuiddlerToggleShortcuts = toggle;
         window.QuiddlerHideShortcuts = hide;
-        document.getElementById('shortcutCloseBtn')?.addEventListener('click', hide);
-        document.addEventListener('keydown', (e) => {
-          if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && (e.key === '/' || e.key === '?')) {
+        document
+          .getElementById("shortcutCloseBtn")
+          ?.addEventListener("click", hide);
+        document.addEventListener("keydown", (e) => {
+          if (
+            (e.metaKey || e.ctrlKey) &&
+            !e.altKey &&
+            !e.shiftKey &&
+            (e.key === "/" || e.key === "?")
+          ) {
             e.preventDefault();
             toggle();
-          } else if (e.key === 'Escape') {
+          } else if (e.key === "Escape") {
             hide();
           }
         });
@@ -496,9 +961,9 @@
 
       // Ensure initial focus sticks on pre-game players input
       function focusPlayersIfPreGame() {
-        const pre = document.getElementById('preGameConfig');
-        const p = document.getElementById('playersInput');
-        if (pre && !pre.classList.contains('hidden') && p && !p.disabled) {
+        const pre = document.getElementById("preGameConfig");
+        const p = document.getElementById("playersInput");
+        if (pre && !pre.classList.contains("hidden") && p && !p.disabled) {
           p.focus();
           p.select?.();
         }
@@ -509,103 +974,138 @@
       requestAnimationFrame(focusPlayersIfPreGame);
 
       // Mobile FAB collapse / expand
-      (function(){
-        const wrap = document.getElementById('fabWrap');
-        const grp = document.getElementById('fabButtons');
-        const toggle = document.getElementById('fabToggle');
-        if(!wrap || !grp || !toggle) return;
+      (function () {
+        const wrap = document.getElementById("fabWrap");
+        const grp = document.getElementById("fabButtons");
+        const toggle = document.getElementById("fabToggle");
+        if (!wrap || !grp || !toggle) return;
         // Start collapsed on mobile only
-        function isMobile(){ return window.matchMedia('(max-width: 639.5px)').matches; }
-        function setCollapsed(val){
-          grp.setAttribute('data-collapsed', val ? 'true' : 'false');
-          toggle.setAttribute('aria-expanded', (!val).toString());
+        function isMobile() {
+          return window.matchMedia("(max-width: 639.5px)").matches;
+        }
+        function setCollapsed(val) {
+          grp.setAttribute("data-collapsed", val ? "true" : "false");
+          toggle.setAttribute("aria-expanded", (!val).toString());
           // Rotate icon 180 when expanded
-          const icon = document.getElementById('fabToggleIcon');
-          if(icon){ icon.style.transition='transform .25s ease'; icon.style.transform = val ? 'rotate(0deg)' : 'rotate(180deg)'; }
+          const icon = document.getElementById("fabToggleIcon");
+          if (icon) {
+            icon.style.transition = "transform .25s ease";
+            icon.style.transform = val ? "rotate(0deg)" : "rotate(180deg)";
+          }
         }
         setCollapsed(true);
-        toggle.addEventListener('click', () => {
-          if(!isMobile()) return; // desktop has all visible; ignore
-          const c = grp.getAttribute('data-collapsed') === 'true';
+        toggle.addEventListener("click", () => {
+          if (!isMobile()) return; // desktop has all visible; ignore
+          const c = grp.getAttribute("data-collapsed") === "true";
           setCollapsed(!c);
         });
         // Close on outside tap or ESC
-        document.addEventListener('pointerdown', (e) => {
-          if(!isMobile()) return;
-          const c = grp.getAttribute('data-collapsed') === 'true';
-            if(c) return; // already closed
-          if(!wrap.contains(e.target)) setCollapsed(true);
+        document.addEventListener("pointerdown", (e) => {
+          if (!isMobile()) return;
+          const c = grp.getAttribute("data-collapsed") === "true";
+          if (c) return; // already closed
+          if (!wrap.contains(e.target)) setCollapsed(true);
         });
-        document.addEventListener('keydown', (e) => {
-          if(!isMobile()) return; if(e.key === 'Escape') setCollapsed(true);
+        document.addEventListener("keydown", (e) => {
+          if (!isMobile()) return;
+          if (e.key === "Escape") setCollapsed(true);
         });
         // If resizing to desktop, ensure expanded state so regular tooltips still work
-        window.addEventListener('resize', () => { if(!isMobile()) { setCollapsed(false); } else { setCollapsed(true); } });
+        window.addEventListener("resize", () => {
+          if (!isMobile()) {
+            setCollapsed(false);
+          } else {
+            setCollapsed(true);
+          }
+        });
       })();
 
       // Word Search dynamic rows (+ / ×) MVP with dynamic placeholders
-      (function(){
-        const container = document.getElementById('searchRows');
-        if(!container) return;
+      (function () {
+        const container = document.getElementById("searchRows");
+        if (!container) return;
         // Init wildcard meta tooltip (plain style) if tippy available
         try {
-          const metaSpan = document.getElementById('wsMetaSet');
+          const metaSpan = document.getElementById("wsMetaSet");
           if (metaSpan && window.tippy) {
-            const content = '. = 1 tile\n? = 0-1 tiles\n* = 0+ tiles\n+ = 1+ tiles';
-            window.tippy(metaSpan, { content, placement:'right', animation:'none', delay:[250,0], theme:'plain', arrow:false, offset:[4,4] });
+            const content =
+              ". = 1 tile\n? = 0-1 tiles\n* = 0+ tiles\n+ = 1+ tiles";
+            window.tippy(metaSpan, {
+              content,
+              placement: "right",
+              animation: "none",
+              delay: [250, 0],
+              theme: "plain",
+              arrow: false,
+              offset: [4, 4],
+            });
           }
-        } catch(_){ }
+        } catch (_) {}
         // Wire digraph units checkbox
-        (function(){
-          const STORAGE_KEY = 'wsDigraphUnits';
-          const cb = document.getElementById('wsDigraphUnits');
-          if(!cb) return;
+        (function () {
+          const STORAGE_KEY = "wsDigraphUnits";
+          const cb = document.getElementById("wsDigraphUnits");
+          if (!cb) return;
           try {
             const stored = localStorage.getItem(STORAGE_KEY);
-            if (stored === '0' || stored === '1') {
-              cb.checked = stored === '1';
+            if (stored === "0" || stored === "1") {
+              cb.checked = stored === "1";
             }
-          } catch(_){ }
+          } catch (_) {}
           const apply = () => {
-            try { window.WordSearch?.setRegexOptions({ digraphUnits: cb.checked }); } catch(_){}
-            try { localStorage.setItem(STORAGE_KEY, cb.checked ? '1':'0'); } catch(_){ }
+            try {
+              window.WordSearch?.setRegexOptions({ digraphUnits: cb.checked });
+            } catch (_) {}
+            try {
+              localStorage.setItem(STORAGE_KEY, cb.checked ? "1" : "0");
+            } catch (_) {}
           };
-          cb.addEventListener('change', apply);
+          cb.addEventListener("change", apply);
           apply();
         })();
-        const SEARCH_SORT_MODE_KEY = 'wsSearchSortMode';
-        let searchSortMode = (function(){
+        const SEARCH_SORT_MODE_KEY = "wsSearchSortMode";
+        let searchSortMode = (function () {
           let v = null;
-          try { v = localStorage.getItem(SEARCH_SORT_MODE_KEY); } catch(_){ }
-          return ['alpha+','alpha-','len+','len-'].includes(v) ? v : 'alpha+';
+          try {
+            v = localStorage.getItem(SEARCH_SORT_MODE_KEY);
+          } catch (_) {}
+          return ["alpha+", "alpha-", "len+", "len-"].includes(v)
+            ? v
+            : "alpha+";
         })();
 
         // --- Minimal implementation (Phase 1 migration: remove bespoke validation) ---
         // All prior per-field soft/hard validation & character filtering removed intentionally.
         // Back-end (WordSearch.validate*) will surface any pattern errors on search execution only.
 
-        function placeholderFor(type){
-          switch(type){
-            case 'regex': return 'e.g., ex.mpl+';
-            case 'contains': return 'e.g., x.mpl';
-            case 'anagram': return 'e.g., past(er)';
-            case 'subanagram': return 'e.g., past(er)';
-            case 'length': return 'e.g., 2, 1-3, 4-, etc.';
-            default: return 'Enter pattern…';
+        function placeholderFor(type) {
+          switch (type) {
+            case "regex":
+              return "e.g., ex.mpl+";
+            case "contains":
+              return "e.g., x.mpl";
+            case "anagram":
+              return "e.g., past(er)";
+            case "subanagram":
+              return "e.g., past(er)";
+            case "length":
+              return "e.g., 2, 1-3, 4-, etc.";
+            default:
+              return "Enter pattern…";
           }
         }
 
-        function updateAddButtons(){
+        function updateAddButtons() {
           const rows = Array.from(container.children);
-          rows.forEach((r,i)=>{
-            const add = r.querySelector('.ws-add');
-            if(add) add.classList.toggle('invisible', i !== rows.length - 1);
+          rows.forEach((r, i) => {
+            const add = r.querySelector(".ws-add");
+            if (add) add.classList.toggle("invisible", i !== rows.length - 1);
           });
         }
 
-        function createRow(){
-          const wrap = document.createElement('div');
-          wrap.className='flex items-center gap-2 mb-2';
+        function createRow() {
+          const wrap = document.createElement("div");
+          wrap.className = "flex items-center gap-2 mb-2";
           wrap.innerHTML = `
             <button type=\"button\" class=\"ws-add w-5 h-5 flex items-center justify-center rounded-full bg-gray-500 hover:bg-gray-600 active:bg-gray-700 text-white text-xs font-semibold shadow transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400\" title=\"Add row\" aria-label=\"Add row\"><span class=\"relative -top-px text-sm\">+</span></button>
             <button type=\"button\" class=\"ws-remove w-5 h-5 flex items-center justify-center rounded-full bg-gray-500 hover:bg-gray-600 active:bg-gray-700 text-white text-xs font-semibold shadow transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400\" title=\"Remove row\" aria-label=\"Remove row\"><span class=\"relative -top-px text-sm\">×</span></button>
@@ -619,112 +1119,188 @@
             </select>
           `;
           container.appendChild(wrap);
-          const sel = wrap.querySelector('.ws-type');
-          const inp = wrap.querySelector('.ws-input');
-          if(sel && inp) inp.placeholder = placeholderFor(sel.value);
+          const sel = wrap.querySelector(".ws-type");
+          const inp = wrap.querySelector(".ws-input");
+          if (sel && inp) inp.placeholder = placeholderFor(sel.value);
           updateAddButtons();
           return wrap;
         }
 
-        function ensureAtLeastOne(){ if(!container.children.length) createRow(); updateAddButtons(); }
-        function handleAdd(){ const row = createRow(); row.querySelector('.ws-input')?.focus(); }
-        function handleRemove(btn){
-          const row = btn.closest('div'); if(!row) return;
+        function ensureAtLeastOne() {
+          if (!container.children.length) createRow();
+          updateAddButtons();
+        }
+        function handleAdd() {
+          const row = createRow();
+          row.querySelector(".ws-input")?.focus();
+        }
+        function handleRemove(btn) {
+          const row = btn.closest("div");
+          if (!row) return;
           const allRows = Array.from(container.children);
-          if(allRows.length===1){ // can't remove last: just clear
-            const inp=row.querySelector('.ws-input'); if(inp) { inp.value=''; inp.focus(); }
+          if (allRows.length === 1) {
+            // can't remove last: just clear
+            const inp = row.querySelector(".ws-input");
+            if (inp) {
+              inp.value = "";
+              inp.focus();
+            }
             return;
           }
-            row.remove(); updateAddButtons();
-          container.lastElementChild?.querySelector('.ws-input')?.focus();
+          row.remove();
+          updateAddButtons();
+          container.lastElementChild?.querySelector(".ws-input")?.focus();
         }
 
-        container.addEventListener('click', e=>{
-          const btn = e.target instanceof HTMLElement ? e.target.closest('button') : null;
-          if(!btn) return;
-          if(btn.classList.contains('ws-add')) handleAdd();
-          else if(btn.classList.contains('ws-remove')) handleRemove(btn);
+        container.addEventListener("click", (e) => {
+          const btn =
+            e.target instanceof HTMLElement ? e.target.closest("button") : null;
+          if (!btn) return;
+          if (btn.classList.contains("ws-add")) handleAdd();
+          else if (btn.classList.contains("ws-remove")) handleRemove(btn);
         });
 
-        container.addEventListener('change', e=>{
-          const sel = e.target instanceof HTMLElement ? e.target.closest('.ws-type') : null;
-          if(!sel) return;
-          const row = sel.closest('div');
-          const inp = row?.querySelector('.ws-input');
-          if(inp){ inp.placeholder = placeholderFor(sel.value); inp.focus(); try { inp.select(); } catch(_){} }
+        container.addEventListener("change", (e) => {
+          const sel =
+            e.target instanceof HTMLElement
+              ? e.target.closest(".ws-type")
+              : null;
+          if (!sel) return;
+          const row = sel.closest("div");
+          const inp = row?.querySelector(".ws-input");
+          if (inp) {
+            inp.placeholder = placeholderFor(sel.value);
+            inp.focus();
+            try {
+              inp.select();
+            } catch (_) {}
+          }
         });
 
-        function collectSpecs(){
-          const specs=[];
-          for(const r of Array.from(container.children)){
-            const inp=r.querySelector('.ws-input'); const sel=r.querySelector('.ws-type');
-            if(!inp||!sel) continue; const val=inp.value.trim(); if(!val) continue;
+        function collectSpecs() {
+          const specs = [];
+          for (const r of Array.from(container.children)) {
+            const inp = r.querySelector(".ws-input");
+            const sel = r.querySelector(".ws-type");
+            if (!inp || !sel) continue;
+            const val = inp.value.trim();
+            if (!val) continue;
             specs.push({ type: sel.value, pattern: val });
           }
           return specs;
         }
 
-        function resetSearch(){
-          Array.from(container.children).forEach(r=>r.remove());
-          const row=createRow();
-          const sel=row.querySelector('.ws-type'); if(sel) sel.value='regex';
-          const inp=row.querySelector('.ws-input'); if(inp){ inp.value=''; inp.placeholder=placeholderFor('regex'); inp.focus(); }
-          setStatus(''); setResult('');
+        function resetSearch() {
+          Array.from(container.children).forEach((r) => r.remove());
+          const row = createRow();
+          const sel = row.querySelector(".ws-type");
+          if (sel) sel.value = "regex";
+          const inp = row.querySelector(".ws-input");
+          if (inp) {
+            inp.value = "";
+            inp.placeholder = placeholderFor("regex");
+            inp.focus();
+          }
+          setStatus("");
+          setResult("");
         }
 
         ensureAtLeastOne();
 
-  // Validation logic now resides in word_search.js (InputValidation dynamic registration).
+        // Validation logic now resides in word_search.js (InputValidation dynamic registration).
 
         // --- Search execution wiring (MVP) ---
-        const searchBtn = document.getElementById('searchGo');
-        const resultEl = document.getElementById('searchResult');
-        const statusEl = document.getElementById('searchStatus');
-        function setStatus(msg, { error=false }={}){
-          if(!statusEl) return;
-          if(!msg){ statusEl.classList.add('hidden'); statusEl.textContent=''; return; }
+        const searchBtn = document.getElementById("searchGo");
+        const resultEl = document.getElementById("searchResult");
+        const statusEl = document.getElementById("searchStatus");
+        function setStatus(msg, { error = false } = {}) {
+          if (!statusEl) return;
+          if (!msg) {
+            statusEl.classList.add("hidden");
+            statusEl.textContent = "";
+            return;
+          }
           statusEl.textContent = msg;
-          statusEl.classList.toggle('text-red-600', error);
-          statusEl.classList.toggle('text-gray-500', !error);
-          statusEl.classList.remove('hidden');
+          statusEl.classList.toggle("text-red-600", error);
+          statusEl.classList.toggle("text-gray-500", !error);
+          statusEl.classList.remove("hidden");
         }
-  let _lastSearchWords = [];
-  let _shownCount = 0; // how many currently displayed
-  let _needsInitWords = false; // flag to apply initial page sizing once per new search
-  let _pendingScrollRestore = null; // { top, ratio }
-        function setResult(msgOrWords, { error=false, isWords=false }={}){
-          if(!resultEl) return;
-          if(!msgOrWords){ resultEl.classList.add('hidden'); resultEl.innerHTML=''; return; }
-          resultEl.classList.remove('hidden');
-          resultEl.classList.toggle('text-red-600', error);
-          resultEl.classList.toggle('text-gray-700', !error && !isWords);
-          if(!isWords){
+        let _lastSearchWords = [];
+        let _shownCount = 0; // how many currently displayed
+        let _needsInitWords = false; // flag to apply initial page sizing once per new search
+        let _pendingScrollRestore = null; // { top, ratio }
+        function setResult(
+          msgOrWords,
+          { error = false, isWords = false } = {}
+        ) {
+          if (!resultEl) return;
+          if (!msgOrWords) {
+            resultEl.classList.add("hidden");
+            resultEl.innerHTML = "";
+            return;
+          }
+          resultEl.classList.remove("hidden");
+          resultEl.classList.toggle("text-red-600", error);
+          resultEl.classList.toggle("text-gray-700", !error && !isWords);
+          if (!isWords) {
             resultEl.textContent = msgOrWords;
             return;
           }
           const words = _lastSearchWords;
           const total = words.length;
-          if(_needsInitWords){
-              _shownCount = Math.min(10, total); // initial page size now 10
+          if (_needsInitWords) {
+            _shownCount = Math.min(10, total); // initial page size now 10
             _needsInitWords = false;
           }
           const slice = words.slice(0, _shownCount);
           // Build neutral word objects for renderChit
           const scoreForChit = window.QuiddlerUI?.scoreForChit;
-          const chitHTML = slice.map(w=>{
-            const score = scoreForChit ? scoreForChit(w) : w.length;
-            return window.renderChit
-              ? window.renderChit({ text:w, score, state:'valid' }, { interactive:false, forceState:'neutral', forceShowDefIcon:true, showDefIcon:true, showBreakdown:true, extraClasses:'!m-0' })
-              : `<span class=\"inline-block px-2 py-0.5 bg-gray-200 rounded text-xs font-semibold\">${w.toUpperCase()} [${score}]</span>`;
-          }).join('');
+          const chitHTML = slice
+            .map((w) => {
+              const score = scoreForChit ? scoreForChit(w) : w.length;
+              return window.renderChit
+                ? window.renderChit(
+                    { text: w, score, state: "valid" },
+                    {
+                      interactive: false,
+                      forceState: "neutral",
+                      forceShowDefIcon: true,
+                      showDefIcon: true,
+                      showBreakdown: true,
+                      extraClasses: "!m-0",
+                    }
+                  )
+                : `<span class=\"inline-block px-2 py-0.5 bg-gray-200 rounded text-xs font-semibold\">${w.toUpperCase()} [${score}]</span>`;
+            })
+            .join("");
           const canMore = _shownCount < total;
           const canLess = _shownCount > 10; // allow reducing down to 10
           const showPagination = total > 10; // hide controls when total results <= initial page size (10)
-      const remaining = total - _shownCount;
-          const remainingLine = remaining > 0 ? `<div class=\"text-[10px] text-gray-500 mt-2 italic text-center w-full\">...and ${remaining} more.</div>` : '';
-          const sortHTML = `<label class=\"inline-flex items-center gap-1 text-xs text-gray-600\">Sort <select id=\"searchSortInline\" class=\"border rounded px-1 py-0.5 text-xs bg-white\"><option value=\"alpha+\" ${searchSortMode==='alpha+'?'selected':''}>A→Z</option><option value=\"alpha-\" ${searchSortMode==='alpha-'?'selected':''}>Z→A</option><option value=\"len+\" ${searchSortMode==='len+'?'selected':''}>Len ↑</option><option value=\"len-\" ${searchSortMode==='len-'?'selected':''}>Len ↓</option></select></label>`;
-          const topControlsRow = total>0 ? `<div class=\"text-xs mb-2 text-center flex flex-wrap justify-center items-center gap-3\">${sortHTML}</div>` : '';
-          const bottomControlsRow = showPagination ? `<div class=\"text-xs mt-3 mb-2 text-center flex flex-wrap justify-center items-center gap-3\"><button type=\"button\" id=\"searchMore\" class=\"text-blue-600 hover:underline ${canMore? '' : 'opacity-40 pointer-events-none'}\">More...</button><button type=\"button\" id=\"searchLess\" class=\"text-blue-600 hover:underline ${canLess? '' : 'opacity-40 pointer-events-none'}\">Less...</button></div>` : '';
+          const remaining = total - _shownCount;
+          const remainingLine =
+            remaining > 0
+              ? `<div class=\"text-[10px] text-gray-500 mt-2 italic text-center w-full\">...and ${remaining} more.</div>`
+              : "";
+          const sortHTML = `<label class=\"inline-flex items-center gap-1 text-xs text-gray-600\">Sort <select id=\"searchSortInline\" class=\"border rounded px-1 py-0.5 text-xs bg-white\"><option value=\"alpha+\" ${
+            searchSortMode === "alpha+" ? "selected" : ""
+          }>A→Z</option><option value=\"alpha-\" ${
+            searchSortMode === "alpha-" ? "selected" : ""
+          }>Z→A</option><option value=\"len+\" ${
+            searchSortMode === "len+" ? "selected" : ""
+          }>Len ↑</option><option value=\"len-\" ${
+            searchSortMode === "len-" ? "selected" : ""
+          }>Len ↓</option></select></label>`;
+          const topControlsRow =
+            total > 0
+              ? `<div class=\"text-xs mb-2 text-center flex flex-wrap justify-center items-center gap-3\">${sortHTML}</div>`
+              : "";
+          const bottomControlsRow = showPagination
+            ? `<div class=\"text-xs mt-3 mb-2 text-center flex flex-wrap justify-center items-center gap-3\"><button type=\"button\" id=\"searchMore\" class=\"text-blue-600 hover:underline ${
+                canMore ? "" : "opacity-40 pointer-events-none"
+              }\">More...</button><button type=\"button\" id=\"searchLess\" class=\"text-blue-600 hover:underline ${
+                canLess ? "" : "opacity-40 pointer-events-none"
+              }\">Less...</button></div>`
+            : "";
           resultEl.innerHTML = `
             <div class="text-sm mb-1 text-center"><span class="font-bold">${total}</span> matches</div>
             ${topControlsRow}
@@ -735,142 +1311,233 @@
             </div>
           `;
           // (initial render pagination handled via _shownCount)
-          const sortEl = resultEl.querySelector('#searchSortInline');
-          sortEl?.addEventListener('change', ()=>{
+          const sortEl = resultEl.querySelector("#searchSortInline");
+          sortEl?.addEventListener("change", () => {
             searchSortMode = sortEl.value;
-            try { localStorage.setItem(SEARCH_SORT_MODE_KEY, searchSortMode); } catch(_){ }
-            if(_lastSearchWords.length){
+            try {
+              localStorage.setItem(SEARCH_SORT_MODE_KEY, searchSortMode);
+            } catch (_) {}
+            if (_lastSearchWords.length) {
               _lastSearchWords = sortWords(_lastSearchWords, searchSortMode);
-              setResult(true,{ isWords:true });
+              setResult(true, { isWords: true });
             }
           });
           // Bottom pagination handlers
-          const moreBtn = resultEl.querySelector('#searchMore');
-          const lessBtn = resultEl.querySelector('#searchLess');
-          moreBtn?.addEventListener('click', ()=>{
-            if(_shownCount < total){
-              const scrollEl = resultEl.querySelector('#searchResultScroll');
-              if(scrollEl){
+          const moreBtn = resultEl.querySelector("#searchMore");
+          const lessBtn = resultEl.querySelector("#searchLess");
+          moreBtn?.addEventListener("click", () => {
+            if (_shownCount < total) {
+              const scrollEl = resultEl.querySelector("#searchResultScroll");
+              if (scrollEl) {
                 const top = scrollEl.scrollTop;
-                const ratio = top / Math.max(1, scrollEl.scrollHeight - scrollEl.clientHeight);
+                const ratio =
+                  top /
+                  Math.max(1, scrollEl.scrollHeight - scrollEl.clientHeight);
                 _pendingScrollRestore = { top, ratio };
               }
               _shownCount = Math.min(_shownCount + 20, total);
-              setResult(true,{ isWords:true });
+              setResult(true, { isWords: true });
             }
           });
-          lessBtn?.addEventListener('click', ()=>{
-            if(_shownCount > 10){
-              const scrollEl = resultEl.querySelector('#searchResultScroll');
-              if(scrollEl){
+          lessBtn?.addEventListener("click", () => {
+            if (_shownCount > 10) {
+              const scrollEl = resultEl.querySelector("#searchResultScroll");
+              if (scrollEl) {
                 const top = scrollEl.scrollTop;
-                const ratio = top / Math.max(1, scrollEl.scrollHeight - scrollEl.clientHeight);
+                const ratio =
+                  top /
+                  Math.max(1, scrollEl.scrollHeight - scrollEl.clientHeight);
                 _pendingScrollRestore = { top, ratio };
               }
               _shownCount = Math.max(10, _shownCount - 20);
-              setResult(true,{ isWords:true });
+              setResult(true, { isWords: true });
             }
           });
           // If we have a pending scroll restore (from prior pagination action), apply now using the NEW scroll container
-          if(_pendingScrollRestore){
-            const sc = resultEl.querySelector('#searchResultScroll');
-            if(sc){
+          if (_pendingScrollRestore) {
+            const sc = resultEl.querySelector("#searchResultScroll");
+            if (sc) {
               const { top, ratio } = _pendingScrollRestore;
               // First attempt exact pixel restore
               sc.scrollTop = Math.min(top, sc.scrollHeight - sc.clientHeight);
               // If large shift occurred (content height changed drastically), fallback to ratio
-              if(Math.abs(sc.scrollTop - top) > 8){
-                sc.scrollTop = Math.round(ratio * (sc.scrollHeight - sc.clientHeight));
+              if (Math.abs(sc.scrollTop - top) > 8) {
+                sc.scrollTop = Math.round(
+                  ratio * (sc.scrollHeight - sc.clientHeight)
+                );
               }
             }
             _pendingScrollRestore = null;
           }
           // Wire def icon clicks to dictionary
-          resultEl.querySelectorAll('.def-open').forEach(icon=>{
-            icon.addEventListener('click', async (e)=>{
-              e.preventDefault(); e.stopPropagation();
-              const w = icon.getAttribute('data-word');
-              if(window.QuiddlerTools?.showDict) { try { await window.QuiddlerTools.showDict(w); } catch(_){} }
+          resultEl.querySelectorAll(".def-open").forEach((icon) => {
+            icon.addEventListener("click", async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const w = icon.getAttribute("data-word");
+              if (window.QuiddlerTools?.showDict) {
+                try {
+                  await window.QuiddlerTools.showDict(w);
+                } catch (_) {}
+              }
             });
           });
           // Initialize tooltips for def icons if available
-          if(window.initChitTooltips){
+          if (window.initChitTooltips) {
             try {
               // Store latest tooltip groups so we can hide them on scroll
               window.__lastChitTips = window.initChitTooltips();
-              const scrollEl = resultEl.querySelector('#searchResultScroll');
-              if(scrollEl && !scrollEl.dataset.tipScrollBound){
-                scrollEl.dataset.tipScrollBound = '1';
-                scrollEl.addEventListener('scroll', ()=>{
-                  const tips = window.__lastChitTips;
-                  if(!tips) return;
-                  // Hide all active tooltip instances quickly
-                  ['breakdownInstances','defInstances','valInstances','dealerInstances','controlInstances'].forEach(k=>{
-                    (tips[k]||[]).forEach(inst=>{ try { inst.hide(); } catch(_){} });
-                  });
-                  // Clear def hover suppression so breakdowns can show again later
-                  window.__defOpenHover = false;
-                }, { passive:true });
+              const scrollEl = resultEl.querySelector("#searchResultScroll");
+              if (scrollEl && !scrollEl.dataset.tipScrollBound) {
+                scrollEl.dataset.tipScrollBound = "1";
+                scrollEl.addEventListener(
+                  "scroll",
+                  () => {
+                    const tips = window.__lastChitTips;
+                    if (!tips) return;
+                    // Hide all active tooltip instances quickly
+                    [
+                      "breakdownInstances",
+                      "defInstances",
+                      "valInstances",
+                      "dealerInstances",
+                      "controlInstances",
+                    ].forEach((k) => {
+                      (tips[k] || []).forEach((inst) => {
+                        try {
+                          inst.hide();
+                        } catch (_) {}
+                      });
+                    });
+                    // Clear def hover suppression so breakdowns can show again later
+                    window.__defOpenHover = false;
+                  },
+                  { passive: true }
+                );
               }
-            } catch(_){}
+            } catch (_) {}
           }
         }
-        function sortWords(words, mode){
+        function sortWords(words, mode) {
           const arr = words.slice();
-          switch(mode){
-            case 'alpha+': arr.sort(); break;
-            case 'alpha-': arr.sort(); arr.reverse(); break;
-            case 'len+': arr.sort((a,b)=> a.length===b.length ? a.localeCompare(b): a.length-b.length); break;
-            case 'len-': arr.sort((a,b)=> a.length===b.length ? a.localeCompare(b): b.length-a.length); break;
+          switch (mode) {
+            case "alpha+":
+              arr.sort();
+              break;
+            case "alpha-":
+              arr.sort();
+              arr.reverse();
+              break;
+            case "len+":
+              arr.sort((a, b) =>
+                a.length === b.length ? a.localeCompare(b) : a.length - b.length
+              );
+              break;
+            case "len-":
+              arr.sort((a, b) =>
+                a.length === b.length ? a.localeCompare(b) : b.length - a.length
+              );
+              break;
           }
           return arr;
         }
-        function runSearch(){
-          if(!window.WordSearch?.searchMulti){ setResult('Search engine not ready', { error:true }); return; }
-          setStatus('');
-          setResult('Searching...');
+        function runSearch() {
+          if (!window.WordSearch?.searchMulti) {
+            setResult("Search engine not ready", { error: true });
+            return;
+          }
+          setStatus("");
+          setResult("Searching...");
           // Allow UI paint before heavy work
-          setTimeout(()=>{
+          setTimeout(() => {
             // Hard-validate all search pattern inputs before executing search so errors surface & we can focus first.
             try {
-              if(window.InputValidation && typeof window.InputValidation.validateGroup==='function'){
-                const okGroup = window.InputValidation.validateGroup('word-search');
-                if(!okGroup){
-                  setResult('Invalid patterns detected; please fix before searching.', { error:true });
+              if (
+                window.InputValidation &&
+                typeof window.InputValidation.validateGroup === "function"
+              ) {
+                const okGroup =
+                  window.InputValidation.validateGroup("word-search");
+                if (!okGroup) {
+                  setResult(
+                    "Invalid patterns detected; please fix before searching.",
+                    { error: true }
+                  );
                   const active = document.activeElement;
-                  const alreadyOnError = active && active.classList && active.classList.contains('ws-input') && active.dataset.ivState === 'error';
-                  if(!alreadyOnError){
-                    const firstErr = document.querySelector('#searchRows .ws-input[data-iv-state="error"]');
-                    if(firstErr){ try { firstErr.focus(); firstErr.select?.(); } catch(_){} }
+                  const alreadyOnError =
+                    active &&
+                    active.classList &&
+                    active.classList.contains("ws-input") &&
+                    active.dataset.ivState === "error";
+                  if (!alreadyOnError) {
+                    const firstErr = document.querySelector(
+                      '#searchRows .ws-input[data-iv-state="error"]'
+                    );
+                    if (firstErr) {
+                      try {
+                        firstErr.focus();
+                        firstErr.select?.();
+                      } catch (_) {}
+                    }
                   }
                   return;
                 }
               }
-            } catch(_){ /* ignore */ }
+            } catch (_) {
+              /* ignore */
+            }
             let specs = collectSpecs();
             // Transform 'contains' specs into regex fast-path equivalents using helper (wrap with * on both ends)
-            specs = specs.map(s => s.type==='contains'
-              ? ({ type:'regex', pattern:(window.WordSearch?.transformContainsPattern ? window.WordSearch.transformContainsPattern(s.pattern) : `*${s.pattern}*`) })
-              : s);
-            if(!specs.length){
+            specs = specs.map((s) =>
+              s.type === "contains"
+                ? {
+                    type: "regex",
+                    pattern: window.WordSearch?.transformContainsPattern
+                      ? window.WordSearch.transformContainsPattern(s.pattern)
+                      : `*${s.pattern}*`,
+                  }
+                : s
+            );
+            if (!specs.length) {
               // All blank -> broad search using fast any pattern '+' (one or more letters)
-              specs = [{ type:'regex', pattern:'+' }];
+              specs = [{ type: "regex", pattern: "+" }];
             }
             const sortMode = searchSortMode;
             let res;
-            try { res = window.WordSearch.searchMulti(specs, { sortMode }); }
-            catch(e){ setResult('Search failed: '+(e.message||e), { error:true }); return; }
-            if(!res || res.ok===false){
+            try {
+              res = window.WordSearch.searchMulti(specs, { sortMode });
+            } catch (e) {
+              setResult("Search failed: " + (e.message || e), { error: true });
+              return;
+            }
+            if (!res || res.ok === false) {
               const errs = (res && res.errors) || [];
-              const msg = errs.length ? 'Invalid patterns detected; please fix before searching.' : 'Search failed';
-              if(errs.length) { try { console.warn('WordSearch errors:', errs); } catch(_){} }
-              setResult(msg, { error:true });
-              if(errs.length){
+              const msg = errs.length
+                ? "Invalid patterns detected; please fix before searching."
+                : "Search failed";
+              if (errs.length) {
+                try {
+                  console.warn("WordSearch errors:", errs);
+                } catch (_) {}
+              }
+              setResult(msg, { error: true });
+              if (errs.length) {
                 const active = document.activeElement;
-                const alreadyOnError = active && active.classList && active.classList.contains('ws-input') && active.dataset.ivState === 'error';
-                if(!alreadyOnError){
-                  const firstErr = document.querySelector('#searchRows .ws-input[data-iv-state="error"]');
-                  if(firstErr){ try { firstErr.focus(); firstErr.select?.(); } catch(_){} }
+                const alreadyOnError =
+                  active &&
+                  active.classList &&
+                  active.classList.contains("ws-input") &&
+                  active.dataset.ivState === "error";
+                if (!alreadyOnError) {
+                  const firstErr = document.querySelector(
+                    '#searchRows .ws-input[data-iv-state="error"]'
+                  );
+                  if (firstErr) {
+                    try {
+                      firstErr.focus();
+                      firstErr.select?.();
+                    } catch (_) {}
+                  }
                 }
               }
               return;
@@ -878,21 +1545,23 @@
             _lastSearchWords = sortWords(res.words.slice(), searchSortMode);
             _shownCount = 0; // will re-init to 20 in setResult via flag
             _needsInitWords = true;
-            setResult(true, { isWords:true });
+            setResult(true, { isWords: true });
           }, 10);
         }
-  searchBtn?.addEventListener('click', runSearch);
-  document.getElementById('searchReset')?.addEventListener('click', resetSearch);
+        searchBtn?.addEventListener("click", runSearch);
+        document
+          .getElementById("searchReset")
+          ?.addEventListener("click", resetSearch);
         // Pressing Enter in any search input triggers search
-        container.addEventListener('keydown', (e)=>{
-          if(!(e.target instanceof HTMLElement)) return;
-          if(!e.target.classList.contains('ws-input')) return;
-            if(e.key==='Enter' && !e.metaKey && !e.ctrlKey && !e.altKey){
-              e.preventDefault(); runSearch();
-            }
+        container.addEventListener("keydown", (e) => {
+          if (!(e.target instanceof HTMLElement)) return;
+          if (!e.target.classList.contains("ws-input")) return;
+          if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+            e.preventDefault();
+            runSearch();
+          }
         });
       })();
-  </script>
-
-</body>
+    </script>
+  </body>
 </html>

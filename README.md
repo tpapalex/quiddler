@@ -3,6 +3,7 @@
 A lightweight, browser-based helper for running and scoring [Quiddler](https://en.wikipedia.org/wiki/Quiddler) games, available at [tpapalex.github.io/quiddler](tpapalex.github.io/quiddler).
 
 ## Highlights
+
 - Track any number of players across 10 rounds with dealer rotation
 - Automatic scoring from tile values (including digraphs)
 - Challenges with per-rules deductions and a “GOD” option (unassigned challenger)
@@ -15,10 +16,12 @@ A lightweight, browser-based helper for running and scoring [Quiddler](https://e
 ## Quick start
 
 Input notation
+
 - Digraph tiles are wrapped in parentheses: (qu), (th), (er), (in), (cl)
 - Unused/penalty chits start with a dash: -e(th)
 
 Challenges & bonuses
+
 - Click a chit to resolve a challenge: pick a challenger (or GOD) and the app marks it valid/invalid against the dictionary and applies deductions.
 - Bonuses (if enabled) award strictly one player per round: longest word length and most words.
 

@@ -1,4 +1,4 @@
-'use strict';
+"use strict";
 
 /*
   scoring.js
@@ -22,25 +22,29 @@ function parseCards(word) {
 function calculateScore(cards) {
   return cards.reduce((total, card) => {
     const key = normalizeToken(card);
-    const val = Object.prototype.hasOwnProperty.call(cardScores, key) ? cardScores[key] : 0; // unknown -> 0
+    const val = Object.prototype.hasOwnProperty.call(cardScores, key)
+      ? cardScores[key]
+      : 0; // unknown -> 0
     return total + val;
   }, 0);
 }
 
 // Utility to convert a token to display form (wrap digraphs in parentheses)
 function toCardToken(token) {
-  const t = String(token || '').trim();
+  const t = String(token || "").trim();
   return t.length > 1 ? `(${t})` : t;
 }
 
 // NEW: Normalize a token to its scoring key (strip parens, lowercase)
 function normalizeToken(token) {
-  return String(token || '').replace(/[()]/g, '').toLowerCase();
+  return String(token || "")
+    .replace(/[()]/g, "")
+    .toLowerCase();
 }
 
 // NEW: Strip leading penalty marker '-'
 function stripPenalty(wordText) {
-  return String(wordText || '').replace(/^-/, '');
+  return String(wordText || "").replace(/^-/, "");
 }
 
 // NEW: Tokens (cards) for a chit/word (penalty removed first)
@@ -56,21 +60,23 @@ function scoreForChit(wordText) {
 // Make the letter-points array for a word text (handles digraphs)
 function pointsArrayFor(wordText) {
   const letters = tokensForWord(wordText);
-  return letters.map(l => {
+  return letters.map((l) => {
     const key = normalizeToken(l);
-    return Object.prototype.hasOwnProperty.call(cardScores, key) ? cardScores[key] : 0;
+    return Object.prototype.hasOwnProperty.call(cardScores, key)
+      ? cardScores[key]
+      : 0;
   });
 }
 
 // NEW: Join a list of tokens into a display word using parentheses for digraphs
 function joinTokensForDisplay(tokens) {
-  return (tokens || []).map(toCardToken).join('');
+  return (tokens || []).map(toCardToken).join("");
 }
 
 // NEW: Convert a chit text into its plain letters (lowercase, no parentheses or '-')
 function plainWord(wordText) {
   const tokens = tokensForWord(wordText);
-  return tokens.map(normalizeToken).join('');
+  return tokens.map(normalizeToken).join("");
 }
 
 // NEW: Length of the plain word (letters only, digraphs count as 2 letters in dictionary spelling)
@@ -81,16 +87,20 @@ function plainLength(wordText) {
 // For tooltip: "2 + 10 + 1"
 function breakdownStr(wordText) {
   const arr = pointsArrayFor(wordText);
-  return arr.join(' + ');
+  return arr.join(" + ");
 }
 
 // Optional color helper (not strictly required by rendering as classes are chosen inline)
 function chitColorClass(word) {
-  return word.state === 'invalid' ? 'bg-red-300' : word.state === 'valid' ? 'bg-green-300' : 'bg-gray-200';
+  return word.state === "invalid"
+    ? "bg-red-300"
+    : word.state === "valid"
+    ? "bg-green-300"
+    : "bg-gray-200";
 }
 
 // Expose UI helpers under a namespace
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   window.QuiddlerUI = Object.assign({}, window.QuiddlerUI || {}, {
     parseCards,
     calculateScore,
