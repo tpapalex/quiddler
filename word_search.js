@@ -2772,3 +2772,31 @@ try {
     } catch (_) {}
   } catch (_) {}
 })();
+
+// ---- Idle prebuild (pre-warm indices to eliminate first-open lag) ----
+// Kicks off WordSearch.init() during an idle period (or after a short timeout) so that
+// the first explicit open of the Search tab doesn't pay the synchronous buildIndices cost.
+// Safe because: this file loads after collins_dictionary.js (validWordsMap is present), and
+// init() is idempotent (guarded by __initialized flag inside ensureInit()).
+(function prewarmWordSearch() {
+  if (typeof window === "undefined") return;
+  const doInit = () => {
+    try {
+      // Only run if not already initialized (avoid needless work if user opened Search quickly).
+      if (window.WordSearch && window.WordSearch.stats) {
+        // stats() internally ensureInit(), but we can cheaply detect by reading a private flag via a try.
+        // Just call init() directly for clarity.
+        window.WordSearch.init?.();
+      }
+    } catch (_) {}
+  };
+  // If the user opens Search very fast, their manual init runs first (fine). This just no-ops later.
+  if ("requestIdleCallback" in window) {
+    try {
+      window.requestIdleCallback(doInit, { timeout: 1500 });
+      return;
+    } catch (_) {}
+  }
+  // Fallback: run after a brief delay (enough for initial paint, short enough to likely precede user action).
+  setTimeout(doInit, 1500);
+})();

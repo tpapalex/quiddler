@@ -754,6 +754,10 @@ function loadGameState() {
   } finally {
     __suppressAutoSave = false;
     // Save immediately to normalize schema if needed
+    // Remove anti-flash attribute once restore attempt finishes (success or fail)
+    try {
+      document.documentElement.removeAttribute("data-q-restoring");
+    } catch (_) {}
     saveGameState();
     updateSkipVisibility(); // NEW ensure correct visibility after load
   }

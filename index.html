@@ -205,6 +205,38 @@
         display: none;
       }
     </style>
+    <!-- Prevent pre-game flash if a saved game exists -->
+    <style>
+      html[data-q-restoring] #preGameConfig {
+        display: none !important;
+      }
+      /* Also hide FABs while restoring saved game to prevent brief unstyled flash */
+      html[data-q-restoring] #fabWrap {
+        visibility: hidden !important;
+      }
+      /* Hide footer hint during restore to reduce transient UI before game area ready */
+      html[data-q-restoring] body > .mt-6.text-center {
+        visibility: hidden !important;
+      }
+    </style>
+    <script>
+      (function () {
+        try {
+          var KEY = "quiddlerGameStateV2";
+          var raw = localStorage.getItem(KEY);
+          if (raw) {
+            // Add attribute immediately so when <body> & #preGameConfig parse, they are hidden already.
+            document.documentElement.setAttribute("data-q-restoring", "");
+            // Fallback: if restore not completed in time, remove attribute so user sees pre-game.
+            setTimeout(function () {
+              if (document.documentElement.hasAttribute("data-q-restoring")) {
+                document.documentElement.removeAttribute("data-q-restoring");
+              }
+            }, 2200);
+          }
+        } catch (_) {}
+      })();
+    </script>
   </head>
   <body class="bg-gray-100 p-4">
     <div class="max-w-3xl mx-auto bg-white shadow-md rounded-lg p-6">
