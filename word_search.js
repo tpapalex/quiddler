@@ -528,14 +528,16 @@ function parseWildcardAnagramPattern(pattern) {
   let finiteWildcards = 0; // '.' and '?' tokens
   let plusCount = 0;       // number of '+' tokens (require usage)
   let starCount = 0;       // number of '*' tokens
+  let dotCount = 0;        // count of '.' tokens
+  let qCount = 0;          // count of '?' tokens
   let m; const metas = new Set(['.','?','*','+']);
   const DIG = DIGRAPHS || new Set();
   while ((m = tokenRe.exec(raw)) !== null) {
     const tok = m[0];
     if (metas.has(tok)) {
       hasWildcards = true;
-  if (tok === '.') { anyMin += 1; anyMax += 1; finiteWildcards += 1; }
-  else if (tok === '?') { anyMax += 1; finiteWildcards += 1; }
+  if (tok === '.') { anyMin += 1; anyMax += 1; finiteWildcards += 1; dotCount += 1; }
+  else if (tok === '?') { anyMax += 1; finiteWildcards += 1; qCount += 1; }
   else if (tok === '+') { anyMin += 1; anyMax = Infinity; unbounded = true; plusCount += 1; }
   else if (tok === '*') { anyMax = Infinity; unbounded = true; starCount += 1; }
       continue;
@@ -573,6 +575,8 @@ function parseWildcardAnagramPattern(pattern) {
   finiteWildcards,
   plusCount,
   starCount,
+  dotCount,
+  qCount,
   hasInfiniteWildcards: (plusCount + starCount) > 0,
   };
   __wildSpecCache.set(raw, spec);
@@ -711,28 +715,27 @@ function searchAnagramLike(pattern, mode, { minLen = 0, maxLen = Infinity } = {}
   const raw = String(pattern==null?'':pattern).trim();
   // -------- Pure wildcard fast path (no literal letters or digraph tokens) --------
   // Recognize patterns consisting solely of wildcard metas . ? * +
+  // Disabled when digraphUnits is true because unit->letter expansion (1..2) would require filtering to avoid false positives / omissions.
   if (/^[.?*+]+$/.test(raw)) {
-    let dots=0, qs=0, plus=0, stars=0;
-    for (const ch of raw) {
-      if (ch==='.') dots++; else if (ch==='?') qs++; else if (ch==='+') plus++; else if (ch==='*') stars++;
+    const digraphUnitsFast = (__regexOptions && __regexOptions.digraphUnits) || false;
+    if (!digraphUnitsFast) {
+      let dots=0, qs=0, plus=0, stars=0;
+      for (const ch of raw) {
+        if (ch==='.') dots++; else if (ch==='?') qs++; else if (ch==='+') plus++; else if (ch==='*') stars++;
+      }
+      const minLenWild = dots + plus; // each '.' & '+' contribute at least 1
+      const maxLenWild = (stars===0 && plus===0) ? (dots + qs) : Infinity; // '+' or '*' introduce unbounded growth
+      let effMin = Math.max(minLen, minLenWild);
+      let effMax = Math.min(maxLen, maxLenWild);
+      if (effMax < effMin) return [];
+      if (mode==='sub' && plus>0) effMin = Math.max(effMin, 1);
+      const out=[];
+      for (let L=effMin; L<=effMax && L<WORDS_BY_LENGTH.length; L++) {
+        const bucket = WORDS_BY_LENGTH[L]; if (bucket) out.push(...bucket);
+      }
+      return out;
     }
-    // Length constraints
-    const minLenWild = dots + plus; // each '.' & '+' contribute at least 1
-    const finite = (stars===0 && plus===0 ? true : false) && stars===0; // '+' makes unbounded upper but still needs >=1 per plus
-    const hasUnbounded = (stars>0 || plus>0 && (stars>0));
-    // For anagram mode: any word whose length in feasible range qualifies.
-    // Upper bound finite if no '*' and no '+' (because '+' adds unbounded) -> maxLenWild = dots + qs
-    const maxLenWild = (stars===0 && plus===0) ? (dots + qs) : Infinity; // '+' or '*' introduce unbounded growth
-    let effMin = Math.max(minLen, minLenWild);
-    let effMax = Math.min(maxLen, maxLenWild);
-    if (effMax < effMin) return [];
-    // Subanagram pure wildcards: '+' enforces at least one letter usage; otherwise same length slice logic.
-    if (mode==='sub' && plus>0) effMin = Math.max(effMin, 1);
-    const out=[];
-    for (let L=effMin; L<=effMax && L<WORDS_BY_LENGTH.length; L++) {
-      const bucket = WORDS_BY_LENGTH[L]; if (bucket) out.push(...bucket);
-    }
-    return out;
+    // else fall through to full spec parsing for correctness under digraph units
   }
   // -------- Subanagram pure literal (single letters only) fast path --------
   if (mode==='sub' && /^[a-zA-Z]+$/.test(raw)) {
@@ -804,8 +807,8 @@ function searchAnagramLike(pattern, mode, { minLen = 0, maxLen = Infinity } = {}
     return 0; // degenerate (no supply)
   }
   const letterMinSupply = supplyMinLetters(spec);
-  const supplyMaxLetters = spec.hasInfiniteWildcards ? Infinity : ( // total available letters if all supply consumed
-    Array.from(spec.literals.entries()).reduce((s,[tok,c])=> s + tok.length * c,0) + spec.finiteWildcards
+  const supplyMaxLetters = spec.hasInfiniteWildcards ? Infinity : ( // total available letters if all supply consumed (account for unit-sized wildcards)
+    Array.from(spec.literals.entries()).reduce((s,[tok,c])=> s + tok.length * c,0) + spec.finiteWildcards * (digraphUnits ? 2 : 1)
   );
   const effMin = mode === 'anagram' ? Math.max(minLen, letterMinReq) : Math.max(minLen, letterMinSupply);
   const effMaxRaw = mode === 'anagram' ? letterMaxReq : supplyMaxLetters;
@@ -814,11 +817,12 @@ function searchAnagramLike(pattern, mode, { minLen = 0, maxLen = Infinity } = {}
   const out = [];
   const opt = { digraphUnits };
   if (mode === 'sub') {
-    // Supply semantics: derive loose length upper bound (finite) when no infinite wildcards
-    const singleLetterSupply = Array.from(spec.literals.entries()).filter(([tok])=>tok.length===1).reduce((s,[,c])=>s+c,0);
-    const adjacencySupply = Array.from(spec.digraphLiteralCounts.entries()).reduce((s,[tok,c])=>s + c*tok.length,0);
-    const finiteWildcardLetters = spec.finiteWildcards; // each supplies 1 letter
-    const letterMaxSupply = spec.hasInfiniteWildcards ? Infinity : (singleLetterSupply + adjacencySupply + finiteWildcardLetters);
+  // Supply semantics with optional digraph units: each finite wildcard can supply up to unitMax letters (1 or 2)
+  const unitMax = (digraphUnits ? 2 : 1);
+  const singleLetterSupply = Array.from(spec.literals.entries()).filter(([tok])=>tok.length===1).reduce((s,[,c])=>s+c,0);
+  const adjacencySupply = Array.from(spec.digraphLiteralCounts.entries()).reduce((s,[tok,c])=>s + c*tok.length,0);
+  const finiteWildcardLettersMax = spec.finiteWildcards * unitMax;
+  const letterMaxSupply = spec.hasInfiniteWildcards ? Infinity : (singleLetterSupply + adjacencySupply + finiteWildcardLettersMax);
     const subEffMax = Math.min(effMax, letterMaxSupply);
     for (let L = effMin; L <= subEffMax && L < WORDS_BY_LENGTH.length; L++) {
       const bucket = WORDS_BY_LENGTH[L]; if (!bucket) continue;
@@ -886,15 +890,41 @@ function subanagramSupplyMatches(spec, word, { digraphUnits = true } = {}) {
       usedIntervals.push(o); remaining--;
     }
   }
-  // Remaining deficits covered by wildcard supply
+  // Remaining deficits (letters) after literal supplies consumed
   let deficits=0; for (const v of Object.values(need)) deficits += v;
-  let wildcardUsed = deficits; // letters we assign to wildcard units
-  const finiteCapacity = spec.finiteWildcards;
-  const infinite = spec.hasInfiniteWildcards;
-  if (!infinite && deficits > finiteCapacity) return false;
-  // '+' usage requirement
-  const requiredWildcardUsage = spec.plusCount > 0 ? spec.plusCount : 0;
-  if (wildcardUsed < requiredWildcardUsage) return false;
+  const infinite = spec.hasInfiniteWildcards; // '+' or '*' introduces infinite letter potential
+  const wildcardTokenCount = spec.finiteWildcards + spec.plusCount; // tokens we can use (excluding '*')
+  if (deficits === 0) {
+    // Must still satisfy '+' usage requirement: if plusCount>0 we need at least one letter to consume; we can optionally "create" a letter only if infinite (* or +) supply exists; but semantics: '+' must be used -> require deficits>0.
+    if (spec.plusCount>0) return false;
+    return true;
+  }
+  if (infinite) {
+    // Need at least plusCount tokens used; any positive deficits lets us satisfy usage.
+    return deficits >= spec.plusCount;
+  }
+  // Finite case: Each wildcard token can represent 1 or (if digraphUnits) 2 letters, but 2-letter usage must align with an actual digraph in the word.
+  if (deficits > wildcardTokenCount * (digraphUnits ? 2 : 1)) return false; // impossible even with maximal pairing
+  // Need at least deficits single-letter coverage: require wildcardTokenCount >= ceil(deficits / 2) when digraphUnits, else deficits.
+  const minTokensNeeded = digraphUnits ? Math.ceil(deficits / 2) : deficits;
+  if (wildcardTokenCount < minTokensNeeded) return false;
+  // '+' usage requirement: at least spec.plusCount of those tokens must be used -> deficits letters imply at least minTokensNeeded tokens used, so check minTokensNeeded >= plusCount (else we might still use more tokens than minimum; ensure possibility)
+  if (spec.plusCount > 0 && deficits < spec.plusCount) return false;
+  // Additional pruning: ensure there are enough disjoint digraph occurrences to realize required pairings when relying on 2-letter tokens.
+  if (digraphUnits && deficits > wildcardTokenCount) {
+    // Need to pair (deficits - wildcardTokenCount) letters into extra capacity via digraph pairings.
+    const neededPairs = deficits - wildcardTokenCount; // number of tokens that must be size 2 instead of size 1
+    if (neededPairs > 0) {
+      // Count max disjoint digraph occurrences in word (simple greedy scan)
+      const lower = word.toLowerCase();
+      let pairs=0; let i=0;
+      while (i < lower.length-1 && pairs < neededPairs) {
+        const dg = lower.slice(i,i+2);
+        if (DIGRAPHS && DIGRAPHS.has(dg)) { pairs++; i += 2; } else i++;
+      }
+      if (pairs < neededPairs) return false;
+    }
+  }
   return true;
 }
 
@@ -1296,15 +1326,32 @@ function searchMulti(specs, { sortMode } = {}) {
       meta.parsed = parsed;
       if (parsed.type==='literal') literalRegexWords.add(parsed.data.word);
     } else if (type==='anagram') {
-      const sig = signatureForAnagramPattern(valRes.normalized);
-      meta.signature = sig;
-      const len = sig.length; inherentMin = len; inherentMax = len;
-      anagramSignatures.add(sig);
+      if (/[.?+*]/.test(valRes.normalized)) {
+        // Wildcard anagram: derive bounds via wildcard spec
+        const wildSpec = parseWildcardAnagramPattern(valRes.normalized);
+        if (!wildSpec.ok) { errors.push(vErr('parse-fail','Wildcard anagram parse failed',{ pattern: valRes.normalized })); continue; }
+        const digraphUnits = (__regexOptions && __regexOptions.digraphUnits) || false;
+        const letterMinReq = wildSpec.totalLiteralLetters + wildSpec.anyMin;
+        const letterMaxReq = wildSpec.anyMax === Infinity ? Infinity : wildSpec.totalLiteralLetters + wildSpec.anyMax * (digraphUnits ? 2 : 1);
+        inherentMin = letterMinReq; inherentMax = letterMaxReq;
+        meta.wildSpec = wildSpec;
+        meta.hasWildcards = true;
+        meta.literalOnly = false;
+        meta.lengthRange = { min: letterMinReq, max: letterMaxReq };
+      } else {
+        const sig = signatureForAnagramPattern(valRes.normalized);
+        meta.signature = sig;
+        const len = sig.length; inherentMin = len; inherentMax = len;
+        anagramSignatures.add(sig);
+        meta.literalOnly = true;
+        meta.hasWildcards = false;
+        meta.lengthRange = { min: len, max: len };
+      }
     } else if (type==='subanagram') {
-  const rackMax = rackMaxLengthSubanagram(valRes.normalized);
-  inherentMin = 0; inherentMax = rackMax; // min remains 0 (subset semantics)
-  meta.rackCounts = rackCountsForPattern(valRes.normalized); // still used for legacy-style upper-bound pruning
-  meta.hasWildcards = /[.?+*]/.test(valRes.normalized);
+      const rackMax = rackMaxLengthSubanagram(valRes.normalized);
+      inherentMin = 0; inherentMax = rackMax; // subset semantics: empty intersection allowed length-wise
+      meta.hasWildcards = /[.?+*]/.test(valRes.normalized);
+      meta.lengthRange = { min: 0, max: rackMax };
     }
 
     // apply to global bounds
@@ -1317,6 +1364,7 @@ function searchMulti(specs, { sortMode } = {}) {
   if (globalMin > globalMax) return { ok:true, indices:[], words:[], plan:[{ reason:'length-contradiction', globalMin, globalMax }], minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
 
   // Early contradictions
+  // Only enforce signature contradiction for purely literal-only anagram specs.
   if (anagramSignatures.size > 1) return { ok:true, indices:[], words:[], plan:[{ reason:'anagram-signature-mismatch' }], minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
   if (literalRegexWords.size > 1) return { ok:true, indices:[], words:[], plan:[{ reason:'literal-mismatch' }], minLen:globalMin, maxLen:globalMax, sortMode: normalizeSortMode(sortMode) };
   // If both literal regex word and anagram signature present, ensure match
@@ -1339,7 +1387,6 @@ function searchMulti(specs, { sortMode } = {}) {
   }
 
   function rank(s) {
-    if (s.type==='anagram') return 1;
     if (s.type==='regex') {
       const t = s.meta.parsed.type;
       if (t==='literal') return 0;
@@ -1347,43 +1394,28 @@ function searchMulti(specs, { sortMode } = {}) {
       if (t==='prefixSuffix' && !s.meta.parsed.unbounded) return 2;
       if (t==='prefix'||t==='suffix') return 3;
       if (t==='contains') return 4;
-      if (t==='any') return 7; // low selectivity
-      return 5; // generic
+      if (t==='any') return 7;
+      return 5;
+    }
+    if (s.type==='anagram') {
+      if (s.meta.literalOnly) return 1; // very selective fixed-length
+      const r = s.inherentMax - s.inherentMin;
+      if (!isFinite(s.inherentMax)) return 6;
+      if (r <= 2) return 3; // tight finite window
+      return 5; // broader wildcard anagram
     }
     if (s.type==='subanagram') {
-  const rackLen = s.inherentMax; // letters available (may be Infinity if +/* present)
-  if (s.meta.hasWildcards) return 5; // wildcard supply patterns are less selective; enumerate later
-  if (!isFinite(rackLen)) return 6;
-  return rackLen <= 7 ? 2 : (rackLen <= 10 ? 4 : 6);
+      if (!isFinite(s.inherentMax)) return 6; // unbounded due to +/*
+      if (s.inherentMax <= 7) return 4; // small rack
+      if (s.inherentMax <= 10) return 5; // medium
+      return 6; // large
     }
     return 8;
   }
 
   executables.sort((a,b)=> rank(a)-rank(b));
 
-  // Sub-anagram base rack selection: choose the one with lowest enumeration score among sub-anagram specs.
-  const subSpecs = executables.filter(s => s.type==='subanagram');
-  if (subSpecs.length > 1) {
-    for (const s of subSpecs) {
-      if (!s.meta.rackCounts) s.meta.rackCounts = rackCountsForPattern(s.normalized);
-      s.meta.enumerationScore = scoreRackForEnumeration(s.meta.rackCounts);
-    }
-    let best = subSpecs[0];
-    for (const s of subSpecs) if (s.meta.enumerationScore < best.meta.enumerationScore) best = s;
-    // Ensure best is earliest among subanagrams while keeping earlier higher-selectivity types (anagram/literal regex) ahead.
-    const firstIdx = executables.findIndex(s => s.type==='subanagram');
-    const bestIdx = executables.indexOf(best);
-    if (bestIdx !== -1 && firstIdx !== -1 && bestIdx !== firstIdx) {
-      const tmp = executables[firstIdx];
-      executables[firstIdx] = executables[bestIdx];
-      executables[bestIdx] = tmp;
-    }
-    best.meta.isBaseSub = true;
-  } else if (subSpecs.length === 1) {
-    // Single subanagram automatically base.
-    subSpecs[0].meta.enumerationScore = scoreRackForEnumeration(subSpecs[0].meta.rackCounts || rackCountsForPattern(subSpecs[0].normalized));
-    subSpecs[0].meta.isBaseSub = true;
-  }
+  // (Legacy subanagram base rack selection removed – wildcard supply semantics enumeration handled internally.)
 
   let current = null;
   const plan=[];
@@ -1393,7 +1425,6 @@ function searchMulti(specs, { sortMode } = {}) {
     const t=spec.type;
     const minLen = globalMin, maxLen = globalMax;
   let action='enumerate';
-  if (t==='subanagram' && spec.meta && spec.meta.isBaseSub) action='enumerate-base';
     if (t==='regex') {
       // literal: direct lookup + length check
       if (spec.meta.parsed.type==='literal') {
@@ -1438,10 +1469,9 @@ function searchMulti(specs, { sortMode } = {}) {
       if (!cached) { cached = searchAnagrams(spec.normalized, { minLen, maxLen }); __anagramCache.set(spec.normalized, cached); }
       produced = cached;
     } else if (t==='subanagram') {
-  // Always use wildcard-aware enumerator; filtering via legacy rack logic removed when wildcards present.
-  let cached = __subanaCache.get(spec.normalized);
-  if (!cached) { cached = searchSubanagrams(spec.normalized, { minLen, maxLen }); __subanaCache.set(spec.normalized, cached); }
-  produced = cached;
+      let cached = __subanaCache.get(spec.normalized);
+      if (!cached) { cached = searchSubanagrams(spec.normalized, { minLen, maxLen }); __subanaCache.set(spec.normalized, cached); }
+      produced = cached;
     }
     produced = uniqueSorted(produced);
     const after = current ? (action==='filter' ? produced : intersectSorted(current, produced)) : produced;
