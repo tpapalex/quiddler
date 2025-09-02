@@ -2134,6 +2134,19 @@ function resetToPreGame() {
     localStorage.removeItem(Q_STORAGE_KEY);
   } catch {}
   // After resetting, re-load saved pre-game config (if any) & reattach listeners
+  // IMPORTANT: Persist the current (auto-carried) inputs immediately so a reload
+  // after clicking "New Game" (before the user types anything) still restores
+  // the previous game's players/options. Previously we only saved on user edits,
+  // and startGame() cleared Q_PRE_CONFIG_KEY, so entering the pre-game screen
+  // then reloading lost the auto-populated values.
+  try {
+    const pEl = document.getElementById("playersInput");
+    // Only snapshot if there's some content (avoid overwriting an existing
+    // saved config with an empty shell).
+    if (pEl && pEl.value.trim()) {
+      savePreGameConfig();
+    }
+  } catch (_) {}
   loadPreGameConfig();
   attachPreGameConfigListeners();
 }

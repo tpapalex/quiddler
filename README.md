@@ -4,13 +4,14 @@ A lightweight, browser-based helper for running and scoring [Quiddler](https://e
 
 ## Highlights
 
-- Track any number of players across 10 rounds with dealer rotation
+- Track any number of players across 3-10 (configurable) rounds with dealer rotation
 - Automatic scoring from tile values (including digraphs)
 - Challenges with per-rules deductions and a “GOD” option (unassigned challenger)
 - Words checked against the 13th ed. of the [Collins English Dictionary](https://www.collinsdictionary.com/dictionary/english) (published 2019)
 - Optional single-winner bonuses: Longest Word and Most Words
 - Dictionary: look up words in game dictionary, as well as the [Free Dictionary API](https://dictionaryapi.dev/)
 - Solver: suggests the best play for a given rack
+- Word Search: search dictionary for simple regex patterns, rack anagrams and subanagrams
 - Persistent game state via localStorage; resume after reload
 
 ## Quick start
@@ -28,5 +29,4 @@ Challenges & bonuses
 ## Tech notes
 
 - Pure HTML + vanilla JS; no bundler. External CDNs: Tailwind, Popper, Tippy.
-- Namespaces exposed on window for integration/debugging: QuiddlerGame, QuiddlerRender, QuiddlerSolver, QuiddlerTools, QuiddlerUI, QuiddlerData.
-- State persists under localStorage key quiddlerGameStateV1. Use “New Game” or clear storage to reset.
+- Namespaces exposed on window for integration/debugging: QuiddlerGame.
