@@ -850,7 +850,7 @@ function searchAnagramLike(pattern, mode, { minLen = 0, maxLen = Infinity, regex
 function searchAnagrams(pattern, { minLen = 0, maxLen = Infinity, regexOptions } = {}) {
   // Cache key must include digraphUnits to avoid stale results when overriding.
   const digraphUnits = (regexOptions && 'digraphUnits' in regexOptions) ? !!regexOptions.digraphUnits : (!!(__regexOptions && __regexOptions.digraphUnits));
-  const cacheKey = pattern + '|' + (digraphUnits ? 'du1':'du0');
+  const cacheKey = pattern + '|' + (digraphUnits ? 'du1':'du0') + '|mn'+minLen+'|mx'+(isFinite(maxLen)?maxLen:'INF');
   let cached = __anagramCache.get(cacheKey);
   if (!cached) {
     cached = searchAnagramLike(pattern, 'anagram', { minLen, maxLen, regexOptions });
@@ -861,7 +861,7 @@ function searchAnagrams(pattern, { minLen = 0, maxLen = Infinity, regexOptions }
 
 function searchSubanagrams(pattern, { minLen = 0, maxLen = Infinity, regexOptions } = {}) {
   const digraphUnits = (regexOptions && 'digraphUnits' in regexOptions) ? !!regexOptions.digraphUnits : (!!(__regexOptions && __regexOptions.digraphUnits));
-  const cacheKey = pattern + '|' + (digraphUnits ? 'du1':'du0');
+  const cacheKey = pattern + '|' + (digraphUnits ? 'du1':'du0') + '|mn'+minLen+'|mx'+(isFinite(maxLen)?maxLen:'INF');
   let cached = __subanaCache.get(cacheKey);
   if (!cached) {
     cached = searchAnagramLike(pattern, 'sub', { minLen, maxLen, regexOptions });
@@ -1065,8 +1065,67 @@ function normalizePostValidation(kind, input){
 // Reintroduced lightweight validators for anagram / subanagram patterns (legacy cleanup removed originals).
 // Behavior: use buildMinimalValidation then downgrade 'bad-digraph' errors to warnings (non-blocking),
 // matching the UI's InputValidation approach where unknown digraphs are warnings.
-function validateAnagrams(pattern) { if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] }; return buildMinimalValidation('anagram', String(pattern)); }
-function validateSubanagrams(pattern) { if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] }; return buildMinimalValidation('subanagram', String(pattern)); }
+function validateAnagrams(pattern) {
+  if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] };
+  const base = buildMinimalValidation('anagram', String(pattern));
+  if (!base.ok) return base;
+  // Heuristic warnings for very broad wildcard anagram patterns (may return huge result sets)
+  // Only evaluate if wildcards present
+  if (/[.?*+]/.test(base.normalized)) {
+    try {
+      const spec = parseWildcardAnagramPattern(base.normalized);
+      if (spec && spec.ok && spec.hasWildcards) {
+        const literalTokens = spec.totalLiteralTokens; // each single letter or digraph literal
+        const unbounded = spec.hasInfiniteWildcards; // plus or star present
+        // Length window (anagram requirement semantics)
+        const digraphUnits = (__regexOptions && __regexOptions.digraphUnits) || false;
+        const letterMinReq = spec.totalLiteralLetters + spec.anyMin;
+        const letterMaxReq = spec.anyMax === Infinity ? Infinity : spec.totalLiteralLetters + spec.anyMax * (digraphUnits ? 2 : 1);
+        const rangeWidth = !isFinite(letterMaxReq) ? Infinity : (letterMaxReq - letterMinReq);
+        const wildcardTokens = spec.dotCount + spec.qCount + spec.plusCount + spec.starCount;
+        const wildcardDensity = wildcardTokens / Math.max(1, wildcardTokens + literalTokens);
+        let warnings = [];
+        if (unbounded && literalTokens <= 2) {
+          warnings.push({ code:'broad-unbounded-anagram', message:'Very broad wildcard anagram; may match a large portion of the dictionary.' });
+        } else if (wildcardDensity >= 0.6 && rangeWidth >= 6) {
+          warnings.push({ code:'broad-dense-anagram', message:'Broad wildcard anagram pattern may produce a very large result set.' });
+        }
+        if (warnings.length) return { ...base, warnings };
+      }
+    } catch(_){ /* ignore heuristics failures */ }
+  }
+  return base;
+}
+function validateSubanagrams(pattern) {
+  if (pattern == null) return { ok:false, errors:[vErr('null-pattern','Pattern is null/undefined')] };
+  const base = buildMinimalValidation('subanagram', String(pattern));
+  if (!base.ok) return base;
+  if (/[.?*+]/.test(base.normalized) || /[()]/.test(base.normalized)) {
+    try {
+      const spec = parseWildcardAnagramPattern(base.normalized);
+      if (spec && spec.ok) {
+        const literalTokens = spec.totalLiteralTokens;
+        const unbounded = spec.hasInfiniteWildcards;
+        const wildcardTokens = spec.dotCount + spec.qCount + spec.plusCount + spec.starCount;
+        const wildcardDensity = wildcardTokens / Math.max(1, wildcardTokens + literalTokens);
+        // Supply capacity estimate
+        const digraphUnits = (__regexOptions && __regexOptions.digraphUnits) || false;
+        const unitMax = digraphUnits ? 2 : 1;
+        const finiteCap = spec.finiteWildcards * unitMax;
+        const literalLetters = Array.from(spec.literals.entries()).reduce((s,[tok,c])=> s + tok.length * c, 0);
+        const capMax = spec.hasInfiniteWildcards ? Infinity : (literalLetters + finiteCap);
+        let warnings = [];
+        if (unbounded) {
+          warnings.push({ code:'broad-unbounded-sub', message:'Subanagram pattern contains * or + (unbounded); expect a very large result set.' });
+        } else if (!unbounded && wildcardDensity >= 0.6 && capMax >= 10) {
+          warnings.push({ code:'broad-dense-sub', message:'Broad subanagram pattern may produce a very large result set.' });
+        }
+        if (warnings.length) return { ...base, warnings };
+      }
+    } catch(_){ }
+  }
+  return base;
+}
 
 // ------------------ Length Pattern Parsing & Validation ------------------
 // Supported syntaxes (whitespace ignored):
@@ -1205,28 +1264,27 @@ function signatureForAnagramPattern(pattern) {
   return letters.sort().join('');
 }
 
-function rackMaxLengthSubanagram(pattern) {
+function rackMaxLengthSubanagram(pattern, { digraphUnits } = {}) {
   // Supply semantics: maximum letters obtainable from literals + optional wildcard capacities.
-  // '.' and '?' each contribute at most 1 letter capacity; '+' and '*' introduce unbounded capacity.
+  // '.' and '?' each contribute at most 1 (letters) unless digraphUnits => up to 2 via a digraph.
+  // '+' and '*' introduce unbounded capacity.
   // Parenthesized digraph tokens contribute their literal length; plain letters contribute 1.
   if (!pattern) return 0;
+  const unitMax = digraphUnits ? 2 : 1;
   let i=0; let total=0; const s=String(pattern);
   while (i < s.length) {
     const ch = s[i];
     if (ch==='(') {
       const close = s.indexOf(')', i+1);
-      if (close === -1) break; // malformed; treat rest as 0 capacity (validated elsewhere)
+      if (close === -1) break; // malformed
       const token = s.slice(i+1, close);
-      // token already validated (letters only, length 1 or 2). Add its length.
-      total += token.length;
-      i = close + 1;
-      continue;
+      total += token.length; // token already validated
+      i = close + 1; continue;
     }
-    if (ch==='.' || ch==='?') { total += 1; i++; continue; }
+    if (ch==='.' || ch==='?') { total += unitMax; i++; continue; }
     if (ch==='+' || ch==='*') { return Infinity; }
     if (/[a-zA-Z]/.test(ch)) { total += 1; i++; continue; }
-    // Any other char ignored (should not occur after validation)
-    i++;
+    i++; // ignore unexpected
   }
   return total;
 }
@@ -1377,7 +1435,7 @@ function searchMulti(specs, { sortMode, regexOptions } = {}) {
         meta.lengthRange = { min: len, max: len };
       }
     } else if (type==='subanagram') {
-      const rackMax = rackMaxLengthSubanagram(valRes.normalized);
+      const rackMax = rackMaxLengthSubanagram(valRes.normalized, { digraphUnits: mergedRegexOptions.digraphUnits });
       inherentMin = 0; inherentMax = rackMax; // subset semantics: empty intersection allowed length-wise
       meta.hasWildcards = /[.?+*]/.test(valRes.normalized);
       meta.lengthRange = { min: 0, max: rackMax };
@@ -1664,9 +1722,25 @@ try { if (typeof window !== 'undefined') { window.WordSearch = WordSearch; } } c
       invalidChars.add(ch);
     }
     if(invalidChars.size) return { status:'error', message:'Invalid characters: '+[...invalidChars].join(', ') };
-    if(warnLargeSub){
-      let letters=0; const tokenRe=/\([^)]+\)|[a-zA-Z]/g; let m; while((m=tokenRe.exec(val))!==null){ const tok=m[0]; letters += tok.startsWith('(')? tok.length-2 : 1; }
-      if(letters>15) return { status:'warning', message:'Large rack, search may time out' };
+    // Heuristic warnings
+    let letters=0; const tokenRe=/\([^)]+\)|[a-zA-Z]/g; let m; while((m=tokenRe.exec(val))!==null){ const tok=m[0]; letters += tok.startsWith('(')? tok.length-2 : 1; }
+    const hasWild = /[.?*+]/.test(val);
+    const unbounded = /[+*]/.test(val);
+    const wildcardCount = (val.match(/[.?*+]/g)||[]).length;
+    // Broad pattern warnings (both anagram & subanagram when allowMeta)
+    if(allowMeta && hasWild){
+      // crude density: wildcards vs total tokens (letters+wildcards)
+      const totalTokens = letters + wildcardCount; const density = wildcardCount / Math.max(1,totalTokens);
+      if(unbounded){
+        // Subanagram (warnLargeSub flag true) always warn; anagram/regex only if few literals (letters <=2)
+        if(warnLargeSub || letters <= 2) {
+          const msg = warnLargeSub
+            ? 'Subanagram pattern has * or +; expect a very large result set'
+            : 'Anagram pattern has * or + with few literals; may return many words';
+          return { status:'warning', message: msg };
+        }
+      }
+      if(!unbounded && density >= 0.6 && letters + wildcardCount >= 8) return { status:'warning', message:'Broad pattern; expect a large result set' };
     }
     return { status:'ok' };
   }
